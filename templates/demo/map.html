@@ -1,0 +1,1529 @@
+حسن وطور التصميم والواجهات واعمل لوقو شاكوش سم المةقع الباحث الذكي 
+عن المناجم
+طورر القائمة بالثلاثة الاشرطة واصلخا 
+واعجده كاملا 
+بشكل احترافي والتحليل هن المناجم 
+ايظا طوره 
+واعده كاملا 
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>GoldMap AI - نظام الكشف الفضائي المتقدّم عن المناجم</title>
+    
+    <!-- Leaflet + إضافات -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+    <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+    
+    <style>
+        :root {
+            --primary: #1a56db;
+            --secondary: #10b981;
+            --accent: #ef4444;
+            --gold: #f59e0b;
+            --bg: #0a0f1d;
+            --panel: #0f1a34;
+            --panel2: #102044;
+            --text: #eef3ff;
+            --muted: #a7b6d8;
+            --border: #213052;
+            --chip: #122044;
+            --radius: 18px;
+            --shadow: 0 12px 32px rgba(0,0,0,.35);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        html, body {
+            height: 100%;
+            font-family: system-ui, -apple-system, 'Segoe UI', 'Cairo', Tahoma, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0f1d, #0f172a);
+            color: var(--text);
+            overflow: hidden;
+        }
+        
+        .container {
+            max-width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+        }
+        
+        header {
+            padding: 15px 20px;
+            border-radius: 15px;
+            background: rgba(15, 26, 52, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 245, 255, 0.2);
+            box-shadow: 0 0 30px rgba(0, 245, 255, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .header-main {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        h1 {
+            margin: 0 0 5px;
+            font-size: 22px;
+            font-weight: 900;
+            background: linear-gradient(45deg, #22d3ee, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .subtitle {
+            color: #cbd5e1;
+            font-size: 14px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .icon-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: radial-gradient(circle at 20% 0%, rgba(56, 189, 248, 0.35), transparent 55%),
+                        linear-gradient(145deg, #020617, #020617);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #e5f3ff;
+            cursor: pointer;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.65);
+            transition: transform .18s ease, box-shadow .18s ease, background .18s ease, border-color .18s ease;
+        }
+
+        .icon-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.9);
+            border-color: rgba(56, 189, 248, 0.65);
+        }
+
+        .menu-btn {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .menu-btn span {
+            position: absolute;
+            right: 9px;
+            left: 9px;
+            height: 2px;
+            background: #e5f3ff;
+            border-radius: 999px;
+            transition: transform .22s ease, opacity .18s ease, top .18s ease, bottom .18s ease;
+        }
+
+        .menu-btn span:nth-child(1) {
+            top: 11px;
+        }
+
+        .menu-btn span:nth-child(2) {
+            top: 17px;
+        }
+
+        .menu-btn span:nth-child(3) {
+            bottom: 11px;
+        }
+
+        .menu-btn.open span:nth-child(1) {
+            top: 18px;
+            transform: rotate(45deg);
+        }
+
+        .menu-btn.open span:nth-child(2) {
+            opacity: 0;
+        }
+
+        .menu-btn.open span:nth-child(3) {
+            bottom: 18px;
+            transform: rotate(-45deg);
+        }
+        
+        .main {
+            display: flex;
+            flex: 1;
+            gap: 15px;
+            height: calc(100vh - 120px);
+        }
+        
+        #map {
+            flex: 1;
+            border-radius: 15px;
+            border: 2px solid rgba(0, 245, 255, 0.18);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .controls {
+            width: 400px;
+            background: rgba(15, 26, 52, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 245, 255, 0.18);
+            border-radius: 15px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            transition: transform .28s ease, box-shadow .28s ease;
+            z-index: 900;
+        }
+        
+        .group {
+            background: rgba(0, 0, 0, 0.25);
+            border-left: 4px solid #22d3ee;
+            border-radius: 12px;
+            padding: 12px;
+        }
+        
+        .group h2 {
+            margin: 0 0 10px;
+            color: #22d3ee;
+            font-size: 15px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .row {
+            display: flex;
+            gap: 8px;
+        }
+        
+        input, select, button {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #0f1b36;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .btn {
+            cursor: pointer;
+            font-weight: 700;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 12px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(180deg, #24b7ff, #2ad3c9);
+            color: #031b2b;
+            border: 0;
+        }
+        
+        .btn-sec {
+            background: linear-gradient(180deg, #1b2b56, #162445);
+            color: #e6efff;
+        }
+        
+        .btn-warn {
+            background: linear-gradient(180deg, #ffd166, #f59e0b);
+            color: #2a1d00;
+            border: 0;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(180deg, #ef4444, #dc2626);
+            color: #fff;
+            border: 0;
+        }
+        
+        .small {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            background: #0b1220eb;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px;
+            color: #dfe7ff;
+            z-index: 500;
+            max-width: 280px;
+        }
+        
+        .legrow {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 4px 0;
+            font-size: 12px;
+        }
+        
+        .dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+        }
+        
+        .progress {
+            height: 8px;
+            background: #0f2248;
+            border-radius: 10px;
+            border: 1px solid #1a2e5a;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        
+        .progress>span {
+            display: block;
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, #60a5fa, #22d3ee);
+            transition: width 0.3s;
+        }
+        
+        .kpi {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .kpi .card {
+            background: #102044;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px;
+            text-align: center;
+        }
+        
+        .kpi .num {
+            font-weight: 900;
+            font-size: 16px;
+        }
+        
+        .notice {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 9999;
+            background: #059669;
+            color: #fff;
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            padding: 10px 12px;
+            transform: translateX(150%);
+            transition: transform 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .notice.show {
+            transform: translateX(0);
+        }
+        
+        .layer-switch {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 600;
+            display: flex;
+            gap: 6px;
+            background: #0b1220c5;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px;
+            flex-wrap: wrap;
+            max-width: calc(100% - 20px);
+        }
+        
+        .layer-switch button {
+            width: auto;
+            white-space: nowrap;
+            padding: 6px 10px;
+            font-size: 12px;
+        }
+        
+        .stylepick {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        
+        .stylepick label {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            font-size: 13px;
+        }
+        
+        .resbox {
+            background: #0f1b36;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px;
+            max-height: 200px;
+            overflow: auto;
+            font-size: 13px;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 10px;
+        }
+        
+        .tab {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: color 0.18s ease, border-bottom-color 0.18s ease, background 0.18s ease;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+        
+        .tab.active {
+            border-bottom: 2px solid #22d3ee;
+            color: #22d3ee;
+            background: radial-gradient(circle at 50% 0%, rgba(45, 212, 191, 0.16), transparent 55%);
+        }
+        
+        .tab-content {
+            opacity: 0;
+            visibility: hidden;
+            height: 0;
+            overflow: hidden;
+            transform: translateY(4px);
+            transition: opacity .22s ease, transform .22s ease;
+        }
+        
+        .tab-content.active {
+            opacity: 1;
+            visibility: visible;
+            height: auto;
+            overflow: visible;
+            transform: translateY(0);
+        }
+        
+        .gold-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .high-prob {
+            background: #dc2626;
+        }
+        
+        .med-prob {
+            background: #f59e0b;
+        }
+        
+        .low-prob {
+            background: #84cc16;
+        }
+
+        .backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.55);
+            z-index: 850;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .25s ease;
+        }
+
+        .backdrop.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        @media (max-width: 1200px) {
+            .main {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            #map {
+                min-height: 50vh;
+            }
+        }
+        
+        @media (max-width: 1024px) {
+            body {
+                overflow-y: auto;
+            }
+
+            header {
+                padding-inline: 12px;
+            }
+
+            h1 {
+                font-size: 18px;
+            }
+
+            .subtitle {
+                font-size: 12px;
+            }
+
+            .main {
+                position: relative;
+            }
+
+            .controls {
+                position: fixed;
+                top: 80px;
+                right: 0;
+                bottom: 0;
+                height: calc(100vh - 80px);
+                max-height: none;
+                width: min(420px, 100%);
+                transform: translateX(100%);
+                border-radius: 18px 0 0 0;
+                box-shadow: none;
+            }
+
+            .controls.open {
+                transform: translateX(0);
+                box-shadow: -14px 0 32px rgba(0, 0, 0, 0.6);
+            }
+
+            .layer-switch {
+                max-width: 160px;
+                right: 8px;
+            }
+
+            .row {
+                flex-direction: column;
+            }
+
+            .container {
+                padding: 6px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .layer-switch {
+                flex-direction: column;
+                max-width: 130px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-main">
+                <h1><i class="fa-solid fa-satellite"></i> GoldMap AI - نظام الكشف الفضائي المتقدّم عن المناجم</h1>
+                <div class="subtitle">
+                    تحليل ذكي داخل الدرع العربي فقط؛ استبعاد البحار والمدن والطرق الكبيرة، 
+                    مع طبقات: صدوع، جيوفيزياء، جاذبية، وحرارة معدنية.
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="btnBack" class="icon-btn" title="رجوع">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+                <button id="btnMenu" class="icon-btn menu-btn" aria-label="القائمة">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+            </div>
+        </header>
+
+        <div class="main">
+            <div id="map">
+                <div class="layer-switch">
+                    <button id="btnStd" class="btn btn-sec"><i class="fa-solid fa-map"></i> عادية</button>
+                    <button id="btnSat" class="btn btn-sec"><i class="fa-solid fa-earth-americas"></i> أقمار</button>
+                    <button id="btnHill" class="btn btn-sec"><i class="fa-solid fa-mountain"></i> تلال</button>
+                    <button id="btnTopo" class="btn btn-sec"><i class="fa-solid fa-map-location-dot"></i> طبوغرافيا</button>
+                </div>
+                
+                <!-- مفتاح ألوان -->
+                <div class="legend" id="legend">
+                    <h3 style="margin-top:0;margin-bottom:8px;font-size:14px;">مفتاح احتمالية الذهب</h3>
+                    <div class="legrow"><div class="dot high-prob"></div>احتمال عالٍ (≥ 70%)</div>
+                    <div class="legrow"><div class="dot med-prob"></div>احتمال متوسط (50–69%)</div>
+                    <div class="legrow"><div class="dot low-prob"></div>احتمال منخفض (&lt; 50%)</div>
+                    <hr style="border:none;height:1px;background:#1e335f;margin:6px 0">
+                    <div class="legrow"><div class="dot" style="background:#22c55e"></div>نمط شجري</div>
+                    <div class="legrow"><div class="dot" style="background:#8b5cf6"></div>نمط ورقي</div>
+                    <div class="legrow"><div class="dot" style="background:#60a5fa"></div>أودية زرقاء</div>
+                </div>
+            </div>
+
+            <aside class="controls">
+                <div class="tabs">
+                    <div class="tab active" data-tab="search">بحث</div>
+                    <div class="tab" data-tab="layers">الطبقات</div>
+                    <div class="tab" data-tab="analysis">التحليل</div>
+                    <div class="tab" data-tab="export">تصدير</div>
+                </div>
+                
+                <div class="tab-content active" id="search-tab">
+                    <div class="group">
+                        <h2><i class="fa-solid fa-magnifying-glass-location"></i> بحث المدن والمناطق</h2>
+                        <div class="row">
+                            <input id="q" placeholder="مثال: الرياض، جدة، أبها" maxlength="60">
+                            <button id="btnSearch" class="btn btn-primary">بحث</button>
+                        </div>
+                        <div class="small">ابحث عن المدن والمناطق في السعودية (لا تُستخدم في التحليل، فقط للانتقال).</div>
+                        <div class="resbox" id="cityBox">جاهز للبحث…</div>
+                    </div>
+                    
+                    <div class="group">
+                        <h2><i class="fa-solid fa-map-pin"></i> المناطق التاريخية للتنقيب</h2>
+                        <div class="resbox" id="miningAreasBox">
+                            <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> مهد الذهب</div>
+                            <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> الصخيبرات</div>
+                            <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> بلغة</div>
+                            <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> وادي بيشة</div>
+                            <div class="small">انقر على أي منطقة للانتقال إليها</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="layers-tab">
+                    <div class="group">
+                        <h2><i class="fa-solid fa-layer-group"></i> طبقات جيولوجية/معادن</h2>
+                        <label><input type="checkbox" id="wmsMrds"> USGS MRDS (نماذج مناجم)</label><br>
+                        <label><input type="checkbox" id="wmsFaults"> خطوط الصدوع الجيولوجية</label><br>
+                        <label><input type="checkbox" id="wmsMinerals"> مربعات المعادن (محاكاة)</label><br>
+                        <label><input type="checkbox" id="wmsGeophys"> طبقة جيوفيزيائية (مغناطيسية/راديومترية – محاكاة)</label><br>
+                        <label><input type="checkbox" id="wmsGravity"> طبقة الجاذبية (Gravity – محاكاة)</label>
+                    </div>
+                    
+                    <div class="group">
+                        <h2><i class="fa-solid fa-fire-flame-simple"></i> حراري معدني</h2>
+                        <label><input type="checkbox" id="chkThermal"> تفعيل التلوين الحراري (داخل الدرع العربي فقط)</label>
+                        <div class="small">بيانات حرارية محاكاة مع استبعاد البحر والمدن.</div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="analysis-tab">
+                    <div class="group">
+                        <h2><i class="fa-solid fa-draw-polygon"></i> رسم منطقة التحليل</h2>
+                        <div class="row">
+                            <button id="btnDrawPoly" class="btn btn-primary"><i class="fa-solid fa-pen-ruler"></i> رسم مضلع</button>
+                            <button id="btnDrawRect" class="btn btn-primary"><i class="fa-solid fa-square"></i> رسم مستطيل</button>
+                        </div>
+                        <div class="small">ارسم منطقة على الخريطة للتحليل (يوصى أن تكون داخل الدرع العربي).</div>
+                        <div id="drawnInfo" class="small" style="margin-top:8px;color:#22d3ee">لم يتم رسم أي منطقة بعد</div>
+                    </div>
+                    
+                    <div class="group">
+                        <h2><i class="fa-solid fa-diagram-project"></i> كشف الأنماط</h2>
+                        <label><input type="checkbox" id="patBranches" checked> النمط الشجري (تشعّب جبال)</label><br>
+                        <label><input type="checkbox" id="patLeaf" checked> النمط الورقي (أحواض/جيوب)</label><br>
+                        <label><input type="checkbox" id="patBlue" checked> الأودية الزرقاء</label>
+
+                        <div class="stylepick">
+                            <span class="small">نمط العرض:</span>
+                            <label><input type="radio" name="style" value="points" checked> نقاط</label>
+                            <label><input type="radio" name="style" value="heat"> حرارية</label>
+                        </div>
+
+                        <div class="row" style="margin-top:10px">
+                            <button id="btnAuto" class="btn btn-primary"><i class="fa-solid fa-bolt"></i> تحليل المنطقة المرئية</button>
+                            <button id="btnScan" class="btn btn-primary"><i class="fa-solid fa-draw-polygon"></i> تحليل المنطقة المرسومة</button>
+                        </div>
+
+                        <div class="progress"><span id="prog"></span></div>
+                        <div class="kpi">
+                            <div class="card"><div class="num" id="mBlue">0</div><div class="small">أودية (زرقاء)</div></div>
+                            <div class="card"><div class="num" id="mBr">0</div><div class="small">تشعبات شجرية</div></div>
+                            <div class="card"><div class="num" id="mLeaf">0</div><div class="small">أحواض ورقية</div></div>
+                            <div class="card"><div class="num" id="kShown">0</div><div class="small">إجمالي النتائج</div></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="export-tab">
+                    <div class="group">
+                        <h2><i class="fa-solid fa-download"></i> تصدير النتائج</h2>
+                        <div class="row">
+                            <button id="btnExportKML" class="btn btn-primary"><i class="fa-solid fa-file-export"></i> تصدير KML</button>
+                            <button id="btnExportGeoJSON" class="btn btn-primary"><i class="fa-solid fa-file-code"></i> تصدير GeoJSON</button>
+                        </div>
+                        <div class="small">حفظ النتائج لاستخدامها في Google Earth أو QGIS إلخ.</div>
+                    </div>
+                    
+                    <div class="group">
+                        <h2><i class="fa-solid fa-screwdriver-wrench"></i> إدارة النظام</h2>
+                        <div class="row">
+                            <button id="btnClear" class="btn btn-warn"><i class="fa-solid fa-broom"></i> مسح النتائج</button>
+                            <button id="btnClearDraw" class="btn btn-warn"><i class="fa-solid fa-eraser"></i> مسح الرسم</button>
+                            <button id="btnHealth" class="btn btn-sec"><i class="fa-solid fa-stethoscope"></i> فحص النظام</button>
+                        </div>
+                        <div id="healthMsg" class="small">—</div>
+                    </div>
+                </div>
+                
+                <div class="group">
+                    <h2><i class="fa-solid fa-list"></i> نتائج التحليل</h2>
+                    <div class="resbox" id="results"><div>لا توجد نتائج بعد. استخدم أدوات التحليل.</div></div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div id="backdrop" class="backdrop"></div>
+
+    <div id="note" class="notice"><i class="fa-solid fa-circle-check"></i> <span id="noteText">تم</span></div>
+
+    <script>
+        // ===================== التهيئة الأساسية للخريطة =====================
+        let map = L.map('map', {
+            center: [23.8859, 45.0792], // مركز السعودية
+            zoom: 6,
+            minZoom: 4,
+            maxZoom: 18
+        });
+
+        // طبقات الخريطة الأساسية
+        const baseLayers = {
+            'الخريطة العادية': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }),
+            'صور الأقمار': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Esri, Maxar, Earthstar Geographics'
+            }),
+            'الخرائط الطبوغرافية': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                attribution: 'OpenTopoMap'
+            }),
+            'تضاريس التلال': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Esri'
+            })
+        };
+
+        baseLayers['صور الأقمار'].addTo(map);
+
+        // إشعارات
+        function toast(msg, type = 'ok') {
+            const n = document.getElementById('note');
+            const t = document.getElementById('noteText');
+            n.style.background = (type === 'err') ? '#dc2626' : '#059669';
+            t.textContent = msg;
+            n.classList.add('show');
+            setTimeout(() => n.classList.remove('show'), 3000);
+        }
+
+        // ===================== حدود تقريبية للدرع العربي واستبعاد البحار والمدن =====================
+        const ARABIAN_SHIELD_POLY = [
+            [29.5,35.0],
+            [29.0,37.5],
+            [28.0,39.0],
+            [27.0,41.0],
+            [25.5,42.5],
+            [24.5,44.0],
+            [23.0,44.7],
+            [21.5,45.0],
+            [20.0,45.2],
+            [18.5,44.8],
+            [17.5,43.5],
+            [17.0,42.0],
+            [17.2,40.5],
+            [18.0,39.0],
+            [19.5,37.8],
+            [21.0,37.0],
+            [23.0,36.5],
+            [25.0,36.0],
+            [27.0,35.5],
+            [29.0,35.2]
+        ];
+
+        const POPULATED = [
+            {name:"الرياض",   lat:24.7136, lng:46.6753, r:0.45},
+            {name:"جدة",      lat:21.4858, lng:39.1925, r:0.35},
+            {name:"مكة",      lat:21.4225, lng:39.8262, r:0.28},
+            {name:"المدينة",  lat:24.4667, lng:39.6000, r:0.25},
+            {name:"الدمام",   lat:26.4207, lng:50.0888, r:0.35},
+            {name:"أبها",     lat:18.2465, lng:42.5117, r:0.25},
+            {name:"جازان",    lat:16.8894, lng:42.5607, r:0.23},
+            {name:"حائل",     lat:27.5219, lng:41.6905, r:0.25},
+            {name:"تبوك",     lat:28.3835, lng:36.5662, r:0.25},
+            {name:"نجران",    lat:17.5656, lng:44.2289, r:0.25}
+        ];
+
+        function pointInPolygon(lat,lng,poly){
+            let inside = false;
+            for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+                const xi = poly[i][0], yi = poly[i][1];
+                const xj = poly[j][0], yj = poly[j][1];
+                const intersect = ((yi>lng) !== (yj>lng)) &&
+                                  (lat < (xj - xi) * (lng - yi) / (yj - yi + 1e-9) + xi);
+                if(intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function inArabianShield(lat,lng){
+            if(!pointInPolygon(lat,lng,ARABIAN_SHIELD_POLY)) return false;
+            if(lng < 36.0) return false; // البحر الأحمر
+            if(lng > 48.0) return false; // خارج الدرع تقريبًا
+            if(lat < 16.5 || lat > 30.0) return false;
+            return true;
+        }
+
+        function farFromCities(lat,lng){
+            for(const c of POPULATED){
+                const d = Math.sqrt(Math.pow(lat-c.lat,2) + Math.pow(lng-c.lng,2));
+                if(d < c.r) return false;
+            }
+            return true;
+        }
+
+        // رسم حدود الدرع كطبقة مرجعية (خط أخضر منقط)
+        L.polygon(ARABIAN_SHIELD_POLY, {
+            color:"#22c55e",
+            weight:1,
+            fill:false,
+            dashArray:"4,6"
+        }).addTo(map);
+
+        // ===================== نظام التبويب =====================
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+
+                // إغلاق القائمة على الجوال بعد الانتقال بين التبويبات
+                if (window.innerWidth <= 1024) {
+                    toggleDrawer(false);
+                }
+            });
+        });
+
+        // ===================== أزرار تبديل الطبقات الأساسية =====================
+        function switchBase(name){
+            map.eachLayer(layer => {
+                if (Object.values(baseLayers).includes(layer)) {
+                    map.removeLayer(layer);
+                }
+            });
+            baseLayers[name].addTo(map);
+        }
+
+        document.getElementById('btnStd').addEventListener('click', () => {
+            switchBase('الخريطة العادية');
+            toast('تم تفعيل الخريطة العادية');
+        });
+        document.getElementById('btnSat').addEventListener('click', () => {
+            switchBase('صور الأقمار');
+            toast('تم تفعيل صور الأقمار');
+        });
+        document.getElementById('btnTopo').addEventListener('click', () => {
+            switchBase('الخرائط الطبوغرافية');
+            toast('تم تفعيل الخرائط الطبوغرافية');
+        });
+        document.getElementById('btnHill').addEventListener('click', () => {
+            switchBase('تضاريس التلال');
+            toast('تم تفعيل تضاريس التلال');
+        });
+
+        // ===================== نظام الرسم =====================
+        let drawnItems = new L.FeatureGroup().addTo(map);
+        let lastDrawnPolygon = null;
+
+        const drawControl = new L.Control.Draw({
+            draw: {
+                polygon: {
+                    allowIntersection: false,
+                    showArea: true,
+                    shapeOptions: {
+                        color: '#22d3ee',
+                        fillColor: '#22d3ee',
+                        fillOpacity: 0.08
+                    }
+                },
+                rectangle: {
+                    shapeOptions: {
+                        color: '#f59e0b',
+                        fillColor: '#f59e0b',
+                        fillOpacity: 0.08
+                    }
+                },
+                polyline: false,
+                circle: false,
+                marker: false,
+                circlemarker: false
+            },
+            edit: {
+                featureGroup: drawnItems
+            }
+        });
+        map.addControl(drawControl);
+
+        map.on(L.Draw.Event.CREATED, function (e) {
+            const layer = e.layer;
+            drawnItems.addLayer(layer);
+            lastDrawnPolygon = layer;
+            
+            const b = layer.getBounds();
+            const dLat = b.getNorth() - b.getSouth();
+            const dLng = b.getEast() - b.getWest();
+            const areaKm2 = (dLat * dLng * 111 * 111).toFixed(1); // تقريب
+            document.getElementById('drawnInfo').innerHTML = 
+                `منطقة مرسومة تقريبية: ${areaKm2} كم²`;
+            toast('تم رسم منطقة التحليل بنجاح');
+        });
+
+        map.on(L.Draw.Event.DELETED, function () {
+            lastDrawnPolygon = null;
+            document.getElementById('drawnInfo').textContent = 'لم يتم رسم أي منطقة بعد';
+            toast('تم حذف منطقة التحليل');
+        });
+
+        document.getElementById('btnDrawPoly').addEventListener('click', () => {
+            new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
+            toast('تم تفعيل رسم المضلع. ارسم على الخريطة.');
+        });
+        document.getElementById('btnDrawRect').addEventListener('click', () => {
+            new L.Draw.Rectangle(map, drawControl.options.draw.rectangle).enable();
+            toast('تم تفعيل رسم المستطيل. ارسم على الخريطة.');
+        });
+
+        // ===================== طبقات بيانات: مناجم، صدوع، معادن، جيوفيزياء، جاذبية =====================
+        const minesLayer = L.layerGroup();
+        const minesData = [
+            {name: "مهد الذهب", lat: 23.5009, lng: 40.8583, type: "ذهب"},
+            {name: "الصخيبرات", lat: 24.0667, lng: 42.9500, type: "ذهب"},
+            {name: "بلغة", lat: 24.9167, lng: 41.2000, type: "ذهب"},
+            {name: "منجم الأمار", lat: 23.8, lng: 41.9, type: "ذهب"},
+            {name: "منجم الحجار", lat: 20.3, lng: 41.8, type: "ذهب"}
+        ];
+        minesData.forEach(mine => {
+            L.circleMarker([mine.lat, mine.lng], {
+                radius: 8,
+                fillColor: "#f59e0b",
+                color: "#000",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.85
+            }).bindPopup(`<b>${mine.name}</b><br>نوع المنجم: ${mine.type}`).addTo(minesLayer);
+        });
+
+        const faultsLayer = L.layerGroup();
+        const faultsData = [
+            [[25.5, 39.0], [24.0, 40.0], [22.5, 41.0], [21.0, 42.5]],
+            [[26.0, 42.0], [24.5, 43.0], [23.0, 44.0], [21.5, 45.0]],
+            [[19.0, 41.5], [20.0, 43.0], [21.0, 44.5]]
+        ];
+        faultsData.forEach(fault => {
+            L.polyline(fault, {
+                color: '#ef4444',
+                weight: 2,
+                opacity: 0.7,
+                dashArray: '5, 10'
+            }).bindPopup('خط صدع جيولوجي (محاكاة)').addTo(faultsLayer);
+        });
+
+        const mineralsLayer = L.layerGroup();
+        const mineralAreas = [
+            {bounds: [[24.5, 41.5], [25.5, 42.5]], name: "منطقة المعادن الشمالية"},
+            {bounds: [[21.0, 42.0], [22.0, 43.0]], name: "منطقة المعادن الوسطى"},
+            {bounds: [[18.5, 43.5], [19.5, 44.5]], name: "منطقة المعادن الجنوبية"}
+        ];
+        mineralAreas.forEach(area => {
+            L.rectangle(area.bounds, {
+                color: "#84cc16",
+                weight: 1,
+                fillColor: "#84cc16",
+                fillOpacity: 0.12
+            }).bindPopup(`<b>${area.name}</b> (محاكاة)`).addTo(mineralsLayer);
+        });
+
+        const geophysLayer = L.layerGroup();
+        const geophysPatches = [
+            {bounds:[[23.5, 39.8],[24.3, 40.6]], name:"شذوذ مغناطيسي 1"},
+            {bounds:[[21.8, 41.2],[22.4, 42.0]], name:"شذوذ راديومتري 2"},
+            {bounds:[[19.7, 42.8],[20.3, 43.6]], name:"شذوذ مغناطيسي 3"}
+        ];
+        geophysPatches.forEach(p=>{
+            L.rectangle(p.bounds,{
+                color:"#7c3aed",
+                weight:1,
+                fillColor:"#7c3aed",
+                fillOpacity:0.15
+            }).bindPopup(`<b>${p.name}</b> (طبقة جيوفيزيائية – محاكاة)`).addTo(geophysLayer);
+        });
+
+        const gravityLayer = L.layerGroup();
+        const gravityPatches = [
+            {bounds:[[24.2, 40.9],[24.9, 41.7]], name:"شذوذ جاذبية +"},
+            {bounds:[[22.0, 42.5],[22.8, 43.3]], name:"شذوذ جاذبية -"}
+        ];
+        gravityPatches.forEach(p=>{
+            L.rectangle(p.bounds,{
+                color:"#06b6d4",
+                weight:1.2,
+                fillColor:"#06b6d4",
+                fillOpacity:0.15
+            }).bindPopup(`<b>${p.name}</b> (Gravity – محاكاة)`).addTo(gravityLayer);
+        });
+
+        document.getElementById('wmsMrds').addEventListener('change', e => {
+            e.target.checked ? minesLayer.addTo(map) : map.removeLayer(minesLayer);
+        });
+        document.getElementById('wmsFaults').addEventListener('change', e => {
+            e.target.checked ? faultsLayer.addTo(map) : map.removeLayer(faultsLayer);
+        });
+        document.getElementById('wmsMinerals').addEventListener('change', e => {
+            e.target.checked ? mineralsLayer.addTo(map) : map.removeLayer(mineralsLayer);
+        });
+        document.getElementById('wmsGeophys').addEventListener('change', e => {
+            e.target.checked ? geophysLayer.addTo(map) : map.removeLayer(geophysLayer);
+        });
+        document.getElementById('wmsGravity').addEventListener('change', e => {
+            e.target.checked ? gravityLayer.addTo(map) : map.removeLayer(gravityLayer);
+        });
+
+        // ===================== الطبقة الحرارية (داخل الدرع فقط) =====================
+        let thermalLayer = null;
+        document.getElementById('chkThermal').addEventListener('change', function(e) {
+            if (e.target.checked) {
+                const thermalPoints = [];
+                let tries = 0;
+                while(thermalPoints.length < 220 && tries < 2000){
+                    tries++;
+                    const lat = 18 + Math.random() * 10; // 18–28
+                    const lng = 39 + Math.random() * 10; // 39–49
+                    if(!inArabianShield(lat,lng)) continue;
+                    if(!farFromCities(lat,lng)) continue;
+                    const intensity = Math.random() * 0.8 + 0.2;
+                    thermalPoints.push([lat, lng, intensity]);
+                }
+                thermalLayer = L.heatLayer(thermalPoints, {
+                    radius: 25,
+                    blur: 15,
+                    maxZoom: 10,
+                    gradient: {
+                        0.2: 'blue',
+                        0.5: 'lime',
+                        0.7: 'yellow',
+                        1.0: 'red'
+                    }
+                }).addTo(map);
+                toast('تم تفعيل الطبقة الحرارية داخل الدرع العربي');
+            } else {
+                if (thermalLayer) {
+                    map.removeLayer(thermalLayer);
+                    thermalLayer = null;
+                }
+                toast('تم إيقاف الطبقة الحرارية');
+            }
+        });
+
+        // ===================== البحث عن المدن (للتنقل فقط) =====================
+        const knownCities = {
+            'الرياض': {lat: 24.7136, lng: 46.6753},
+            'جدة': {lat: 21.4858, lng: 39.1825},
+            'مكة': {lat: 21.4225, lng: 39.8262},
+            'الدمام': {lat: 26.4207, lng: 50.0888},
+            'الطائف': {lat: 21.4373, lng: 40.5127},
+            'تبوك': {lat: 28.3835, lng: 36.5662},
+            'ابها': {lat: 18.2465, lng: 42.5117},
+            'جازان': {lat: 16.8894, lng: 42.5607},
+            'حائل': {lat: 27.5219, lng: 41.6905},
+            'الباحة': {lat: 20.0126, lng: 41.4672},
+            'نجران': {lat: 17.5656, lng: 44.2289},
+            'مهد الذهب': {lat: 23.5009, lng: 40.8583},
+            'وادي بيشة': {lat: 20.0, lng: 42.5}
+        };
+
+        document.getElementById('btnSearch').addEventListener('click', searchCity);
+        document.getElementById('q').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchCity();
+        });
+
+        function searchCity() {
+            const term = document.getElementById('q').value.trim();
+            if (!term) {
+                toast('يرجى إدخال اسم مدينة', 'err');
+                return;
+            }
+            const cityBox = document.getElementById('cityBox');
+            cityBox.innerHTML = 'جاري البحث...';
+            if (knownCities[term]) {
+                const city = knownCities[term];
+                map.setView([city.lat, city.lng], 10);
+                L.marker([city.lat, city.lng])
+                    .addTo(map)
+                    .bindPopup(`<b>${term}</b>`)
+                    .openPopup();
+                cityBox.innerHTML = `تم العثور على: <b>${term}</b>`;
+                toast(`تم الانتقال إلى ${term}`);
+            } else {
+                cityBox.innerHTML = 'لم يتم العثور على المدينة. جرب اسمًا آخر.';
+                toast('لم يتم العثور على المدينة', 'err');
+            }
+        }
+
+        // إضافة نقاط المناطق التاريخية
+        Object.keys(knownCities).forEach(city => {
+            if (['مهد الذهب', 'وادي بيشة'].includes(city)) {
+                const pos = knownCities[city];
+                L.marker([pos.lat, pos.lng])
+                    .addTo(map)
+                    .bindPopup(`<b>${city}</b><br>منطقة تنقيب تاريخية`)
+                    .on('click', () => {
+                        map.setView([pos.lat, pos.lng], 12);
+                    });
+            }
+        });
+
+        // ===================== نظام التحليل =====================
+        let analysisResults = [];
+        let resultsLayer = L.layerGroup().addTo(map);
+        let heatmapLayer = null;
+
+        document.getElementById('btnAuto').addEventListener('click', function() {
+            analyzeArea('viewport');
+        });
+        document.getElementById('btnScan').addEventListener('click', function() {
+            if (!lastDrawnPolygon) {
+                toast('يرجى رسم منطقة للتحليل أولاً', 'err');
+                return;
+            }
+            analyzeArea('drawn');
+        });
+
+        function setProg(p) {
+            document.getElementById('prog').style.width = p + '%';
+        }
+
+        function distToPolyline(lat,lng,poly){
+            let minD = Infinity;
+            for(let i=0;i<poly.length-1;i++){
+                const a = poly[i], b = poly[i+1];
+                const d = Math.min(
+                    Math.sqrt(Math.pow(lat-a[0],2)+Math.pow(lng-a[1],2)),
+                    Math.sqrt(Math.pow(lat-b[0],2)+Math.pow(lng-b[1],2))
+                );
+                if(d<minD) minD=d;
+            }
+            return minD;
+        }
+
+        function insideRect(lat,lng,bounds){
+            return lat>=bounds[0][0] && lat<=bounds[1][0] &&
+                   lng>=bounds[0][1] && lng<=bounds[1][1];
+        }
+
+        function nearestFaultBoost(lat,lng){
+            let best = 0;
+            faultsData.forEach(f=>{
+                const d = distToPolyline(lat,lng,f);
+                if(d < 1.0){ // أقل من ~1 درجة -> تعزيز
+                    const score = (1.0 - d) * 0.2;
+                    if(score > best) best = score;
+                }
+            });
+            return best;
+        }
+
+        function mineralBoost(lat,lng){
+            let boost = 0;
+            mineralAreas.forEach(a=>{
+                if(insideRect(lat,lng,a.bounds)){
+                    boost = Math.max(boost,0.15);
+                }
+            });
+            geophysPatches.forEach(a=>{
+                if(insideRect(lat,lng,a.bounds)){
+                    boost = Math.max(boost,0.1);
+                }
+            });
+            gravityPatches.forEach(a=>{
+                if(insideRect(lat,lng,a.bounds)){
+                    boost = Math.max(boost,0.08);
+                }
+            });
+            return boost;
+        }
+
+        function analyzeArea(mode) {
+            clearResults();
+            let bounds;
+            if (mode === 'viewport') {
+                bounds = map.getBounds();
+            } else {
+                bounds = lastDrawnPolygon.getBounds();
+            }
+
+            const corners = [
+                [bounds.getSouth(), bounds.getWest()],
+                [bounds.getSouth(), bounds.getEast()],
+                [bounds.getNorth(), bounds.getWest()],
+                [bounds.getNorth(), bounds.getEast()]
+            ];
+            const insideCount = corners.filter(c=>inArabianShield(c[0],c[1])).length;
+            if(insideCount === 0){
+                toast("المنطقة الحالية خارج الدرع العربي تقريبًا. اختر منطقة أخرى.", "err");
+                document.getElementById('results').innerHTML = "التحليل يعمل داخل الدرع العربي فقط.";
+                return;
+            }
+
+            document.getElementById('results').innerHTML = 'جاري التحليل داخل الدرع العربي مع استبعاد المدن والبحار...';
+            setProg(0);
+
+            setTimeout(() => {
+                setProg(35);
+                const numResults = Math.floor(Math.random() * 40) + 30;
+                analysisResults = [];
+                let safety = 0;
+
+                while(analysisResults.length < numResults && safety < numResults*50){
+                    safety++;
+                    const lat = bounds.getSouth() + Math.random() * (bounds.getNorth() - bounds.getSouth());
+                    const lng = bounds.getWest() + Math.random() * (bounds.getEast() - bounds.getWest());
+
+                    if(!inArabianShield(lat,lng)) continue;
+                    if(!farFromCities(lat,lng)) continue;
+
+                    const blue = Math.random();
+                    const branch = Math.random();
+                    const leaf = Math.random();
+
+                    let baseScore = blue * 0.34 + branch * 0.46 + leaf * 0.20;
+                    const faultBonus = nearestFaultBoost(lat,lng);
+                    const mineralBonus = mineralBoost(lat,lng);
+
+                    let score = baseScore + faultBonus + mineralBonus;
+                    score = Math.max(0, Math.min(1, score));
+
+                    analysisResults.push({
+                        lat, lng,
+                        score,
+                        blue,
+                        branch,
+                        leaf,
+                        probability: calculateProbability(score)
+                    });
+                }
+
+                setProg(75);
+                displayResults();
+                setProg(100);
+                toast(`تم التحليل وتم العثور على ${analysisResults.length} نتيجة داخل الدرع العربي`);
+            }, 1200);
+        }
+
+        function calculateProbability(score) {
+            if (score >= 0.7) return 'high';
+            if (score >= 0.5) return 'medium';
+            return 'low';
+        }
+
+        function displayResults() {
+            resultsLayer.clearLayers();
+            if (heatmapLayer) {
+                map.removeLayer(heatmapLayer);
+                heatmapLayer = null;
+            }
+
+            const displayStyle = document.querySelector('input[name="style"]:checked').value;
+            const useBlue = document.getElementById('patBlue').checked;
+            const useBranch = document.getElementById('patBranches').checked;
+            const useLeaf = document.getElementById('patLeaf').checked;
+
+            let cBlue = 0, cBr = 0, cLeaf = 0;
+            const heatPoints = [];
+
+            analysisResults.forEach(result => {
+                if (result.blue > 0.5 && useBlue) cBlue++;
+                if (result.branch > 0.5 && useBranch) cBr++;
+                if (result.leaf > 0.5 && useLeaf) cLeaf++;
+
+                if (displayStyle === 'points') {
+                    let color;
+                    if (result.probability === 'high') color = '#dc2626';
+                    else if (result.probability === 'medium') color = '#f59e0b';
+                    else color = '#84cc16';
+
+                    L.circleMarker([result.lat, result.lng], {
+                        radius: 6,
+                        fillColor: color,
+                        color: '#ffffff',
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.85
+                    })
+                    .bindTooltip(`نقاط: ${(result.score * 100).toFixed(1)}%`)
+                    .addTo(resultsLayer);
+                } else {
+                    heatPoints.push([result.lat, result.lng, result.score]);
+                }
+            });
+
+            if (displayStyle === 'heat' && heatPoints.length > 0) {
+                heatmapLayer = L.heatLayer(heatPoints, {
+                    radius: 25,
+                    blur: 15,
+                    maxZoom: 12,
+                    gradient: {
+                        0.4: 'blue',
+                        0.6: 'cyan',
+                        0.7: 'lime',
+                        0.8: 'yellow',
+                        1.0: 'red'
+                    }
+                }).addTo(map);
+            }
+
+            document.getElementById('mBlue').textContent = cBlue;
+            document.getElementById('mBr').textContent = cBr;
+            document.getElementById('mLeaf').textContent = cLeaf;
+            document.getElementById('kShown').textContent = analysisResults.length;
+
+            const highProb = analysisResults.filter(r => r.probability === 'high').length;
+            const medProb = analysisResults.filter(r => r.probability === 'medium').length;
+            const lowProb = analysisResults.filter(r => r.probability === 'low').length;
+
+            document.getElementById('results').innerHTML = `
+                <div><span class="gold-indicator high-prob"></span> احتمالية عالية (حول صدوع/مربعات معادن): ${highProb}</div>
+                <div><span class="gold-indicator med-prob"></span> احتمالية متوسطة: ${medProb}</div>
+                <div><span class="gold-indicator low-prob"></span> احتمالية منخفضة: ${lowProb}</div>
+                <hr style="border:none;height:1px;background:#1e335f;margin:6px 0">
+                <div>إجمالي النتائج داخل الدرع العربي (مع استبعاد المدن والبحار): ${analysisResults.length}</div>
+            `;
+        }
+
+        // ===================== التصدير KML / GeoJSON =====================
+        document.getElementById('btnExportKML').addEventListener('click', exportKML);
+        document.getElementById('btnExportGeoJSON').addEventListener('click', exportGeoJSON);
+
+        function exportKML() {
+            if (analysisResults.length === 0) {
+                toast('لا توجد نتائج للتصدير', 'err');
+                return;
+            }
+            let kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>نتائج GoldMap AI</name>
+<description>نتائج تحليل الذهب والمعادن (محاكاة داخل الدرع العربي)</description>`;
+            analysisResults.forEach((result, index) => {
+                const color = getKMLColor(result.probability);
+                kmlContent += `
+<Placemark>
+<name>نتيجة ${index + 1}</name>
+<description>
+الاحتمالية: ${result.probability === 'high' ? 'عالية' : result.probability === 'medium' ? 'متوسطة' : 'منخفضة'}
+النقاط: ${(result.score * 100).toFixed(1)}%
+</description>
+<Style>
+<IconStyle>
+<color>${color}</color>
+<scale>1.2</scale>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href>
+</Icon>
+</IconStyle>
+</Style>
+<Point>
+<coordinates>${result.lng},${result.lat},0</coordinates>
+</Point>
+</Placemark>`;
+            });
+            kmlContent += `
+</Document>
+</kml>`;
+            downloadFile(kmlContent, 'GoldMap_AI_Results.kml', 'application/vnd.google-earth.kml+xml');
+            toast('تم تصدير النتائج بصيغة KML');
+        }
+
+        function exportGeoJSON() {
+            if (analysisResults.length === 0) {
+                toast('لا توجد نتائج للتصدير', 'err');
+                return;
+            }
+            const features = analysisResults.map((result, index) => ({
+                type: 'Feature',
+                properties: {
+                    id: index + 1,
+                    probability: result.probability,
+                    score: result.score,
+                    blue: result.blue,
+                    branch: result.branch,
+                    leaf: result.leaf
+                },
+                geometry: {
+                    type: 'Point',
+                    coordinates: [result.lng, result.lat]
+                }
+            }));
+            const geoJSON = {
+                type: 'FeatureCollection',
+                features: features
+            };
+            downloadFile(JSON.stringify(geoJSON, null, 2), 'GoldMap_AI_Results.geojson', 'application/geo+json');
+            toast('تم تصدير النتائج بصيغة GeoJSON');
+        }
+
+        function getKMLColor(probability) {
+            switch(probability) {
+                case 'high': return 'ff0000ff'; // أزرق في KML (ABGR)
+                case 'medium': return 'ff00aaff'; // برتقالي تقريبًا
+                case 'low': return 'ff00ff00'; // أخضر
+                default: return 'ffffffff';
+            }
+        }
+
+        function downloadFile(content, fileName, contentType) {
+            const a = document.createElement('a');
+            const file = new Blob([content], {type: contentType});
+            a.href = URL.createObjectURL(file);
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
+        // ===================== إدارة النظام =====================
+        document.getElementById('btnClear').addEventListener('click', clearResults);
+        document.getElementById('btnClearDraw').addEventListener('click', clearDrawings);
+        document.getElementById('btnHealth').addEventListener('click', checkSystemHealth);
+
+        function clearResults() {
+            analysisResults = [];
+            resultsLayer.clearLayers();
+            if (heatmapLayer) {
+                map.removeLayer(heatmapLayer);
+                heatmapLayer = null;
+            }
+            document.getElementById('results').innerHTML = 'لا توجد نتائج بعد. استخدم أدوات التحليل.';
+            document.getElementById('mBlue').textContent = '0';
+            document.getElementById('mBr').textContent = '0';
+            document.getElementById('mLeaf').textContent = '0';
+            document.getElementById('kShown').textContent = '0';
+            setProg(0);
+            toast('تم مسح جميع النتائج');
+        }
+
+        function clearDrawings() {
+            drawnItems.clearLayers();
+            lastDrawnPolygon = null;
+            document.getElementById('drawnInfo').textContent = 'لم يتم رسم أي منطقة بعد';
+            toast('تم مسح جميع الرسومات');
+        }
+
+        function checkSystemHealth() {
+            const healthMsg = document.getElementById('healthMsg');
+            const isMapLoaded = map && map._loaded;
+            const hasLayers = Object.keys(baseLayers).length > 0;
+            if (isMapLoaded && hasLayers) {
+                healthMsg.textContent = '✅ النظام يعمل بكفاءة (التحليل داخل الدرع العربي فقط)';
+                healthMsg.style.color = '#10b981';
+                toast('فحص النظام: كل شيء يعمل بشكل صحيح');
+            } else {
+                healthMsg.textContent = '❌ هناك مشكلة في تحميل النظام';
+                healthMsg.style.color = '#ef4444';
+                toast('فحص النظام: اكتشاف مشاكل', 'err');
+            }
+        }
+
+        setTimeout(() => { checkSystemHealth(); }, 1000);
+
+        // ===================== قائمة الجوال (هامبرجر) + زر الرجوع =====================
+        const menuBtn = document.getElementById('btnMenu');
+        const backdrop = document.getElementById('backdrop');
+        const controlsPanel = document.querySelector('.controls');
+        const backBtn = document.getElementById('btnBack');
+
+        function toggleDrawer(forceOpen) {
+            const isOpen = controlsPanel.classList.contains('open');
+            const shouldOpen = (typeof forceOpen === 'boolean') ? forceOpen : !isOpen;
+
+            if (shouldOpen) {
+                controlsPanel.classList.add('open');
+                menuBtn.classList.add('open');
+                backdrop.classList.add('show');
+            } else {
+                controlsPanel.classList.remove('open');
+                menuBtn.classList.remove('open');
+                backdrop.classList.remove('show');
+            }
+        }
+
+        menuBtn.addEventListener('click', () => {
+            // لا نغير شيء على الديسكتوب شكليًا، التأثير للجوال فقط من خلال الـ CSS
+            toggleDrawer();
+        });
+
+        backdrop.addEventListener('click', () => {
+            toggleDrawer(false);
+        });
+
+        backBtn.addEventListener('click', () => {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                map.setView([23.8859, 45.0792], 6);
+                toast('تمت العودة إلى عرض السعودية العام');
+            }
+        });
+
+        // إغلاق القائمة عند تكبير الشاشة مرة أخرى (خروج من وضع الجوال)
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 1024) {
+                controlsPanel.classList.remove('open');
+                menuBtn.classList.remove('open');
+                backdrop.classList.remove('show');
+            }
+        });
+    </script>
+</body>
+</html>
