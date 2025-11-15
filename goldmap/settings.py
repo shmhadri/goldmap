@@ -7,6 +7,42 @@ try:
 except ImportError:  # احتياط لو المكتبة مو منصبة
     load_dotenv = None
 
+# ───────────── دوال مساعدة للبيئة ─────────────
+def env_bool(name: str, default: bool = False) -> bool:
+    """قراءة Boolean من متغيرات البيئة بشكل آمن."""
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def env_int(name: str, default: int = 0) -> int:
+    """قراءة رقم صحيح من متغيرات البيئة بدون رفع ValueError."""
+    val = os.getenv(name)
+    if val is None:
+        return default
+    val = val.strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
+def normalize_host(host: str) -> str:
+    """
+    تنظيف اسم الهوست:
+    - إزالة http:// أو https://
+    - إزالة أي / في النهاية
+    """
+    host = host.strip()
+    if host.startswith("http://"):
+        host = host[len("http://") :]
+    elif host.startswith("https://"):
+        host = host[len("https://") :]
+    return host.strip("/")
+
 # ───────────── المسار الأساسي ─────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -15,7 +51,9 @@ if load_dotenv:
     load_dotenv(BASE_DIR / ".env")
 
 # متغير الدومين الخارجي من Render (مثلاً goldmap.onrender.com)
-RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+RENDER_EXTERNAL_HOSTNAME = normalize_host(
+    os.getenv("RENDER_EXTERNAL_HOSTNAME", "") or ""
+)
 
 # ───────────── المفاتيح وأعلام التشغيل ─────────────
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-key-change-me")  # غيّرها في الإنتاج
@@ -25,11 +63,12 @@ DEBUG = os.getenv("DJANGO_DEBUG", "true").strip().lower() == "true"
 
 # ───────────── ALLOWED_HOSTS مصحّحة ─────────────
 # نقرأ من DJANGO_ALLOWED_HOSTS إن وُجد، وإلا نستخدم localhost
-_env_hosts = [
+_env_hosts_raw = [
     h.strip()
     for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",")
     if h.strip()
 ]
+_env_hosts = [normalize_host(h) for h in _env_hosts_raw if normalize_host(h)]
 
 if _env_hosts:
     ALLOWED_HOSTS = _env_hosts
@@ -216,15 +255,13 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
 # إعادة التوجيه لـ HTTPS في الإنتاج فقط لو فعلتها في .env
-SECURE_SSL_REDIRECT = not DEBUG and bool(int(os.getenv("SECURE_SSL_REDIRECT", "0")))
+SECURE_SSL_REDIRECT = not DEBUG and env_bool("SECURE_SSL_REDIRECT", False)
 
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
-SECURE_HSTS_SECONDS = 0 if DEBUG else int(os.getenv("SECURE_HSTS_SECONDS", "0"))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = (
-    False if DEBUG else bool(int(os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "0")))
-)
-SECURE_HSTS_PRELOAD = False if DEBUG else bool(int(os.getenv("SECURE_HSTS_PRELOAD", "0")))
+SECURE_HSTS_SECONDS = 0 if DEBUG else env_int("SECURE_HSTS_SECONDS", 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False if DEBUG else env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
+SECURE_HSTS_PRELOAD = False if DEBUG else env_bool("SECURE_HSTS_PRELOAD", False)
 
 # ───────────── Logging مبسط مفيد أثناء التطوير ─────────────
 LOGGING = {
