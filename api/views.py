@@ -21,10 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def map_view(request):
-    """
-    إرجاع صفحة الخريطة الرئيسية (واجهة GoldMap)
-    HTML موجود في: templates/demo/map.html
-    """
+    """إرجاع صفحة الخريطة الرئيسية (واجهة GoldMap)."""
     return render(request, "demo/map.html")
 
 
@@ -32,9 +29,7 @@ def map_view(request):
 
 
 def _fc(features: List[Dict[str, Any]] | None = None) -> Dict[str, Any]:
-    """
-    يبني هيكل FeatureCollection بسيط متوافق مع GeoJSON.
-    """
+    """FeatureCollection بسيط."""
     return {"type": "FeatureCollection", "features": features or []}
 
 
@@ -72,20 +67,14 @@ def create_feature_collection(
     features: List[Dict[str, Any]] | None = None
 ) -> Dict[str, Any]:
     """إنشاء FeatureCollection قياسي."""
-    return {
-        "type": "FeatureCollection",
-        "features": features or [],
-    }
+    return {"type": "FeatureCollection", "features": features or []}
 
 
 # ===================== أدوات هندسية (نقاط داخل مضلع) =====================
 
 
 def point_in_poly(lat: float, lon: float, poly: List[List[float]]) -> bool:
-    """
-    التحقق من وجود نقطة داخل مضلع باستخدام خوارزمية ray casting.
-    poly = [[lat, lon], ...]
-    """
+    """التحقق من وجود نقطة داخل مضلع (ray casting). poly = [[lat, lon], ...]."""
     x, y = lon, lat
     inside = False
     n = len(poly)
@@ -103,17 +92,14 @@ def point_in_poly(lat: float, lon: float, poly: List[List[float]]) -> bool:
 
 
 def _grid_points_in_poly(poly: List[List[float]], count: int) -> List[tuple]:
-    """
-    إنشاء نقاط باستخدام تقسيم شبكي احتياطي (fallback)
-    في حال random_points ما أعطت العدد الكافي.
-    """
+    """شبكة احتياطية لنقاط داخل المضلع لو العشوائي لم يكفِ."""
     lats = [p[0] for p in poly]
     lons = [p[1] for p in poly]
     min_lat, max_lat = min(lats), max(lats)
     min_lon, max_lon = min(lons), max(lons)
 
     grid_points: List[tuple] = []
-    grid_size = max(2, int(math.sqrt(count * 4)))
+    grid_size = max(2, int(math.sqrt(count * 3)))
 
     for i in range(grid_size):
         for j in range(grid_size):
@@ -126,10 +112,10 @@ def _grid_points_in_poly(poly: List[List[float]], count: int) -> List[tuple]:
     return grid_points[:count]
 
 
-def random_points_in_poly(poly: List[List[float]], count: int = 200) -> List[tuple]:
+def random_points_in_poly(poly: List[List[float]], count: int = 120) -> List[tuple]:
     """
-    إنشاء نقاط عشوائية داخل مضلع مع تحسين الكفاءة
-    (محاولات عشوائية + شبكة احتياطية).
+    نقاط عشوائية داخل مضلع مع محاولات محدودة + شبكة احتياطية.
+    العدد الافتراضي أقل لتخفيف التحليل.
     """
     lats = [p[0] for p in poly]
     lons = [p[1] for p in poly]
@@ -138,7 +124,7 @@ def random_points_in_poly(poly: List[List[float]], count: int = 200) -> List[tup
 
     pts: List[tuple] = []
     trials = 0
-    max_trials = count * 100  # نسمح بمحاولات أكثر قليلاً
+    max_trials = count * 60  # أقل من السابق لتقليل الوقت
 
     while len(pts) < count and trials < max_trials:
         lat = random.uniform(min_lat, max_lat)
@@ -147,32 +133,44 @@ def random_points_in_poly(poly: List[List[float]], count: int = 200) -> List[tup
             pts.append((lat, lon))
         trials += 1
 
-    # لو ما وصلنا العدد المطلوب نكمل بشبكة
     if len(pts) < count:
         pts.extend(_grid_points_in_poly(poly, count - len(pts)))
 
     return pts[:count]
 
 
-# ===================== محرك التحليل الجيولوجي (رياضي/تجريبي) =====================
+# ===================== كاشف البحر (تقريبي) =====================
+
+
+def is_sea(lat: float, lon: float) -> bool:
+    """
+    استبعاد البحر الأحمر والخليج (تقريبياً):
+    - البحر الأحمر: غرب السعودية تقريباً (lon < 38.8)
+    - الخليج العربي: شرق السعودية تقريباً (lon > 50.5)
+    هذا يحمي من التحليل فوق البحر بدون استبعاد اليابسة.
+    """
+    # البحر الأحمر
+    if 16.0 <= lat <= 28.8 and lon < 38.8:
+        return True
+
+    # الخليج العربي
+    if 24.0 <= lat <= 29.5 and lon > 50.5:
+        return True
+
+    return False
+
+
+# ===================== محرك التحليل الجيولوجي (مبسّط) =====================
 
 
 class GeologyAnalyzer:
     """
-    محرك تحليل جيولوجي رياضي (تجريبي) مبني على:
-    - الأنماط الشجرية Tree-like (تشعب أودية قوي).
-    - الأنماط الورقية Leaf-like (تشعبات دقيقة متعددة الاتجاهات).
-    - الأودية والصدوع Wadis / Shear Zones.
-    - تعدد الألوان (هالات أكسدة) Oxidation Halos.
-    - الكسور والفوالق Fractures / Faults.
-    مع تعزيز خاص لمناطق:
-    - الدرع العربي (Western Arabian Shield).
-    - حواف المرتفعات بين الأحمر/الأخضر (Transition Zone بين جبل ووادي).
-    - الأنماط المشابهة لمناطق ذهب حراري مثل: مهد الذهب، بلغة، السويرقية، بلغة – العيص.
+    محرك تحليلي مبسّط يعتمد على:
+    - نمط شجري / ورقي / أودية / أكسدة / كسور.
+    - تفضيل الدرع العربي وحواف الجبال.
     """
 
     def __init__(self):
-        # أوزان تقريبية لكل نمط
         self.weights = {
             "tree": 0.40,
             "leaf": 0.25,
@@ -181,77 +179,57 @@ class GeologyAnalyzer:
             "fractures": 0.08,
         }
 
-    # -------- أنماط التضاريس / الأودية / الأكسدة --------
+    # -------- أنماط سطحية مبسّطة --------
 
     def _terrain_roughness(self, lat: float, lon: float) -> float:
-        """حساب خشونة التضاريس (قيمة 0..1)."""
         base = abs(math.sin(lat * 7.3) * math.cos(lon * 5.7))
         detail = math.sin(lat * 13.2) * math.cos(lon * 11.5) * 0.3
         return max(0.0, min(1.0, base + detail))
 
     def _dendritic_pattern(self, lat: float, lon: float) -> float:
-        """النمط الشجري - تشعبات متفرعة (جذع + أغصان)."""
         main_branches = math.sin((lat + lon) * 6.0) * math.cos(lat * 3.1)
         sub_branches = math.cos((lat - lon) * 8.2) * math.sin(lon * 4.7)
         density = math.sin(lat * 15.0) * 0.2
-
         score = (
-            abs(main_branches) * 0.5
-            + max(0.0, sub_branches) * 0.3
-            + density * 0.2
+            abs(main_branches) * 0.5 + max(0.0, sub_branches) * 0.3 + density * 0.2
         )
         return max(0.0, min(1.0, score))
 
     def _leafy_pattern(self, lat: float, lon: float) -> float:
-        """النمط الورقي - تشعبات دقيقة متعددة الاتجاهات."""
         pattern1 = math.cos(lat * 9.0) * math.cos(lon * 8.0)
         pattern2 = math.sin(lat * 5.0) * math.sin(lon * 6.0)
         fine_details = math.sin(lat * 18.0 + lon * 12.0) * 0.4
-
         score = (pattern1 * 0.4 + pattern2 * 0.4 + fine_details * 0.2 + 1.0) / 2.0
         return max(0.0, min(1.0, score))
 
     def _wadis_pattern(self, lat: float, lon: float) -> float:
-        """أنماط الأودية في المناطق الخشنة."""
         roughness = self._terrain_roughness(lat, lon)
         valley_pattern = math.sin((lat * 12.0) - (lon * 7.0))
         drainage = math.cos(lat * 8.5 + lon * 6.3) * 0.3
-
         score = roughness * max(0.0, valley_pattern) + drainage
         return max(0.0, min(1.0, abs(score)))
 
     def _oxidation_pattern(self, lat: float, lon: float) -> float:
-        """أنماط الأكسدة المتعددة الألوان (أصفر/أحمر/برتقالي)."""
         yellow_zones = (math.sin(lat * 11.0) + 1.0) / 2.0
         red_zones = (math.cos(lon * 13.0) + 1.0) / 2.0
         orange_zones = math.sin(lat * 7.0 + lon * 9.0) * 0.5 + 0.5
-
         score = yellow_zones * 0.4 + red_zones * 0.35 + orange_zones * 0.25
         return max(0.0, min(1.0, score))
 
     def _fractures_pattern(self, lat: float, lon: float) -> float:
-        """أنماط الكسور والصدوع (خطية ومتقاطعة)."""
         linear_features = abs(math.sin(lon * 10.0)) * 0.6
         cross_features = abs(math.cos(lat * 10.0)) * 0.4
         fault_density = math.sin(lat * 6.0 + lon * 8.0) * 0.3 + 0.3
-
         score = linear_features + cross_features + fault_density
         return max(0.0, min(1.0, score / 1.5))
 
     # -------- الدرع العربي + الجبال --------
 
     def _arabian_shield_zone(self, lat: float, lon: float) -> str:
-        """
-        تقسيم بسيط لموقع النقطة بالنسبة للدرع العربي:
-        - inside  : داخل الدرع (أعلى ثقة وكثافة).
-        - margin  : حزام محيط قريب من الدرع (ثقة متوسطة).
-        - outside : خارج الدرع العربي (نقاط قليلة ودقيقة جداً).
-        """
-        # صندوق "داخل الدرع" (تقريبي)
+        """inside / margin / outside بالنسبة للدرع العربي (تقريبي)."""
         inside_lon_min, inside_lon_max = 36.0, 44.5
         inside_lat_min, inside_lat_max = 16.0, 28.5
 
-        # صندوق أوسع ليكون "هامش الدرع"
         margin_lon_min, margin_lon_max = 35.0, 46.0
         margin_lat_min, margin_lat_max = 15.0, 30.0
 
@@ -268,12 +246,6 @@ class GeologyAnalyzer:
         return "outside"
 
     def _arabian_shield_bias(self, lat: float, lon: float) -> float:
-        """
-        إرجاع وزن عددي بحسب موقع النقطة من الدرع العربي:
-        inside -> 1.0
-        margin -> 0.4
-        outside -> 0.0
-        """
         zone = self._arabian_shield_zone(lat, lon)
         if zone == "inside":
             return 1.0
@@ -282,15 +254,9 @@ class GeologyAnalyzer:
         return 0.0
 
     def _mountain_analysis(self, lat: float, lon: float) -> Dict[str, Any]:
-        """
-        تحليل الخصائص الجبلية / الانحدار / الوعورة / حافة الجبل (Transition Zone).
-        """
         roughness = self._terrain_roughness(lat, lon)
         hillshade = (math.cos(lat * 3.3) * math.sin(lon * 2.9)) > 0.25
-
-        # منطقة انتقالية بين جبل ووادي (مكان ممتاز لعروق الذهب)
         transition_zone = 0.32 < roughness < 0.62
-
         return {
             "mountain": roughness > 0.35,
             "hillshade": hillshade,
@@ -300,7 +266,7 @@ class GeologyAnalyzer:
             "roughness_value": roughness,
         }
 
-    # -------- "توقيع ذهبي" شبيه بمواقع مثل مهد الذهب / بلغة --------
+    # -------- توقيع ذهبي مبسّط --------
 
     def _gold_signature_score(
         self,
@@ -310,45 +276,31 @@ class GeologyAnalyzer:
         flags: Dict[str, Any],
         shield_bias: float,
     ) -> float:
-        """
-        تقدير درجة "توقيع ذهبي" بناءً على:
-        - نمط شجري + أودية متشعبة.
-        - هالات أكسدة حمراء/صفراء.
-        - كسور وفوالق قوية.
-        - وعورة + منطقة انتقالية بين جبل ووادي.
-        - داخل الدرع العربي.
-        """
         s_tree = scores.get("tree", 0.0)
-        s_leaf = scores.get("leaf", 0.0)
         s_wadis = scores.get("wadis", 0.0)
         s_multi = scores.get("multi", 0.0)
         s_fract = scores.get("fractures", 0.0)
 
         score = 0.0
 
-        # الدرع العربي = قاعدة قوية
         if shield_bias > 0.0:
             score += 0.25 * shield_bias
 
-        # نمط شجري + أودية متشعبة
         if s_tree > 0.55 and s_wadis > 0.45:
             score += 0.25
 
-        # هالات أكسدة (تعدد ألوان)
         if s_multi > 0.45:
             score += 0.20
 
-        # كسور وفوالق قوية
         if s_fract > 0.50:
             score += 0.20
 
-        # وعورة + Transition Zone (مثل حواف المرتفعات في بلغة/مهد الذهب)
         if flags.get("rugged") and flags.get("transition_zone"):
             score += 0.10
 
         return max(0.0, min(1.0, score))
 
-    # -------- أسباب نصية + نسب لكل سبب --------
+    # -------- أسباب مبسّطة --------
 
     def _generate_reasons(
         self,
@@ -358,12 +310,6 @@ class GeologyAnalyzer:
         strong_traits: int,
         gold_signature: float,
     ) -> tuple[list[str], list[Dict[str, Any]]]:
-        """
-        توليد أسباب نصية للتحليل مع نسب (0..1) لكل سبب.
-        ترجع:
-          - قائمة نصوص بسيطة "reasons".
-          - قائمة كائنات "reason_details": {label, score, percent}.
-        """
         reasons: List[str] = []
         details: List[Dict[str, Any]] = []
 
@@ -371,53 +317,41 @@ class GeologyAnalyzer:
             s = float(max(0.0, min(1.0, score)))
             reasons.append(label)
             details.append(
-                {
-                    "label": label,
-                    "score": round(s, 3),
-                    "percent": int(round(s * 100)),
-                }
+                {"label": label, "score": round(s, 3), "percent": int(round(s * 100))}
             )
 
-        # الدرع العربي
         if shield_bias > 0.0:
-            add_reason("داخل نطاق الدرع العربي - بيئة مواتية للتمعدن", 0.85 * shield_bias)
+            add_reason("داخل نطاق الدرع العربي", 0.85 * shield_bias)
 
-        # الجبال / الانحدار / التباين / الوعورة / حافة الجبل
         if flags.get("mountain"):
-            add_reason("منطقة جبلية - توفر الصخور الأساسية", 0.7)
+            add_reason("منطقة جبلية", 0.7)
         if flags.get("slope"):
-            add_reason("انحدار مرتفع - يساهم في تركيز المعادن في الأودية", 0.65)
+            add_reason("انحدار مرتفع", 0.65)
         if flags.get("hillshade"):
-            add_reason("تباين تضاريسي واضح - مؤشر على تعقيد جيولوجي", 0.6)
+            add_reason("تباين تضاريسي واضح", 0.6)
         if flags.get("rugged"):
-            add_reason("تضاريس وعرة - بيئة مناسبة لكسور عميقة وتمعدن", 0.75)
+            add_reason("تضاريس وعرة", 0.75)
         if flags.get("transition_zone"):
-            add_reason("منطقة انتقالية بين جبل ووادي - حواف مرتفعات مفضلة للذهب الحراري", 0.8)
+            add_reason("منطقة انتقالية جبل/وادي", 0.8)
 
-        # الأنماط السطحية:
         if scores.get("tree", 0) > 0.50:
-            add_reason("ملامح شجرية قوية - تشعب أودية مشابه لمناطق الذهب المعروفة", scores["tree"])
+            add_reason("ملامح شجرية قوية", scores["tree"])
         if scores.get("leaf", 0) > 0.50:
-            add_reason("ملامح ورقية - تشعبات دقيقة تدل على فواصل صخرية متكررة", scores["leaf"])
+            add_reason("ملامح ورقية دقيقة", scores["leaf"])
         if scores.get("wadis", 0) > 0.50:
-            add_reason("شبكة أودية كثيفة - تصريف يحفر في الصخور ويُظهر العروق", scores["wadis"])
+            add_reason("شبكة أودية كثيفة", scores["wadis"])
         if scores.get("multi", 0) > 0.55:
-            add_reason("هالات أكسدة حمراء/صفراء - مؤشرات تغير حراري وتواجد معادن", scores["multi"])
+            add_reason("هالات أكسدة حمراء/صفراء", scores["multi"])
         if scores.get("fractures", 0) > 0.55:
-            add_reason("كسور وفوالق خطية - مسارات مفضلة لصعود عروق الكوارتز", scores["fractures"])
+            add_reason("كسور وفوالق خطية", scores["fractures"])
 
-        # قوة التوقيع الذهبي
         if gold_signature >= 0.6:
-            add_reason(
-                "نمط يشبه مواقع ذهب حراري (مهد الذهب / بلغة / السويرقية / العيص)",
-                gold_signature,
-            )
+            add_reason("نمط يشبه مواقع ذهب حراري معروفة", gold_signature)
 
-        # تعدد السمات القوية
         if strong_traits >= 3:
-            add_reason("تعدد سمات جيولوجية قوية في نفس الموقع", 0.85)
+            add_reason("تعدد سمات قوية في نفس النقطة", 0.85)
         elif strong_traits >= 2:
-            add_reason("وجود أكثر من سمة جيولوجية متوسطة القوة في نفس الموقع", 0.65)
+            add_reason("وجود أكثر من سمة متوسطة القوة", 0.65)
 
         return reasons, details
 
@@ -428,12 +362,11 @@ class GeologyAnalyzer:
     ) -> Dict[str, Any]:
         """
         تحليل نقطة واحدة:
-          - scores لكل نمط
-          - flags جبلية / انتقالية
-          - gold_signature_score
-          - confidence 0..1
-          - أسباب نصية + تفاصيل (نص + نسبة لكل سبب)
-          - strong_traits عدد السمات القوية
+        - scores لكل نمط
+        - flags جبلية/انتقالية
+        - gold_signature_score
+        - confidence 0..1
+        - أسباب + تفاصيل
         """
         requested = set(patterns)
 
@@ -450,31 +383,27 @@ class GeologyAnalyzer:
             scores["fractures"] = self._fractures_pattern(lat, lon)
 
         pattern = max(scores.items(), key=lambda kv: kv[1])[0] if scores else None
+
         flags = self._mountain_analysis(lat, lon)
         shield_bias = self._arabian_shield_bias(lat, lon)
         shield_zone = self._arabian_shield_zone(lat, lon)
         flags["shield_zone"] = shield_zone
 
-        # ثقة أساسية من الأوزان
         base_confidence = sum(self.weights.get(k, 0.0) * v for k, v in scores.items())
-
-        # تقدير "توقيع ذهبي" مشابه للمناجم المعروفة
         gold_signature = self._gold_signature_score(lat, lon, scores, flags, shield_bias)
 
-        # نبدأ من الثقة الأساسية + جزء من التوقيع الذهبي
         confidence = base_confidence + 0.15 * gold_signature
 
-        # تعزيز الدرع العربي
         if shield_bias > 0.0:
-            confidence = min(1.0, confidence * (1.05 + 0.05 * shield_bias) + 0.05 * shield_bias)
+            confidence = min(
+                1.0, confidence * (1.05 + 0.05 * shield_bias) + 0.05 * shield_bias
+            )
 
-        # تعزيز المناطق الجبلية / الانتقالية
         if flags["mountain"] or flags["slope"] or flags["hillshade"]:
-            confidence = min(1.0, confidence * 1.12 + 0.05)
+            confidence = min(1.0, confidence * 1.10 + 0.04)
         if flags["transition_zone"]:
-            confidence = min(1.0, confidence * 1.08 + 0.04)
+            confidence = min(1.0, confidence * 1.06 + 0.03)
 
-        # حساب السمات القوية
         strong_traits = 0
         strong_traits += 1 if scores.get("tree", 0) > 0.50 else 0
         strong_traits += 1 if scores.get("leaf", 0) > 0.50 else 0
@@ -482,11 +411,10 @@ class GeologyAnalyzer:
         strong_traits += 1 if scores.get("multi", 0) > 0.55 else 0
         strong_traits += 1 if scores.get("fractures", 0) > 0.55 else 0
 
-        # ضبط الثقة بحسب قوة السمات
         if strong_traits >= 3:
-            confidence = min(1.0, confidence * 1.15 + 0.08)
+            confidence = min(1.0, confidence * 1.12 + 0.06)
         elif strong_traits >= 2:
-            confidence = min(1.0, confidence * 1.08 + 0.04)
+            confidence = min(1.0, confidence * 1.05 + 0.03)
         else:
             confidence = max(0.0, confidence * 0.80 - 0.03)
 
@@ -509,17 +437,15 @@ class GeologyAnalyzer:
         }
 
 
-# مثيل المحلل
 analyzer = GeologyAnalyzer()
 
 
 def _accept_geology_point(analysis_result: Dict[str, Any]) -> bool:
     """
-    فلتر نهائي للنقاط حتى تكون:
-    - قليلة لكن دقيقة جداً.
-    - داخل الدرع العربي: عتبات متوسطة.
-    - هامش الدرع: عتبات أعلى قليلاً.
-    - خارج الدرع: عتبات صارمة جداً (نقاط نادرة).
+    فلتر نهائي:
+    - داخل الدرع: شروط متوسطة.
+    - الهامش: أعلى.
+    - خارج الدرع: صارم جداً (نادر).
     """
     zone = analysis_result.get("flags", {}).get("shield_zone", "outside")
     conf = float(analysis_result.get("confidence", 0.0))
@@ -529,23 +455,19 @@ def _accept_geology_point(analysis_result: Dict[str, Any]) -> bool:
     leaf = float(scores.get("leaf", 0.0))
 
     if zone == "inside":
-        # داخل الدرع: نريد نقاط معقولة لكن ليست كثيرة جداً
         if conf < 0.50 or strong < 3:
             return False
-        # نفضل أن يكون أحد النمطين (شجري/ورقي) قوي
         if max(tree, leaf) < 0.50:
             return False
         return True
 
     if zone == "margin":
-        # هامش الدرع: أصعب قليلاً
         if conf < 0.60 or strong < 3:
             return False
         if max(tree, leaf) < 0.55:
             return False
         return True
 
-    # خارج الدرع العربي: نقاط نادرة جداً ودقيقة
     if conf < 0.80 or strong < 4:
         return False
     if tree < 0.65 or leaf < 0.55:
@@ -553,14 +475,13 @@ def _accept_geology_point(analysis_result: Dict[str, Any]) -> bool:
     return True
 
 
-# ===================== كاشف المناطق المأهولة / المزارع / المياه (Overpass) =====================
+# ===================== كاشف المناطق المأهولة / المزارع / المياه =====================
 
 
 class UrbanAreaDetector:
     """
-    كاشف المناطق المأهولة + المزارع + المياه باستخدام Overpass API + كاش
-    - يستبعد: طرق رئيسة، مدن/بلدات، استعمالات سكنية/تجارية/صناعية، مزارع،
-      مجاري مياه، مسطحات مائية، سواحل، وبحار.
+    كاشف المدن / الطرق / المياه / المزارع باستخدام Overpass.
+    يُستخدم لمنع ظهور نقاط على المدن والبحر والمزارع.
     """
 
     def __init__(self):
@@ -583,7 +504,6 @@ class UrbanAreaDetector:
         lat2_rad = math.radians(lat2)
         dlat = math.radians(lat2 - lat1)
         dlon = math.radians(lon2 - lon1)
-
         a = (
             math.sin(dlat / 2) ** 2
             + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
@@ -593,9 +513,7 @@ class UrbanAreaDetector:
     def _point_to_segment_distance(
         self, lat, lon, seg_lat1, seg_lon1, seg_lat2, seg_lon2
     ):
-        """
-        مسافة نقطة إلى قطعة مستقيمة (تقريبًا بالإسقاط المتري المحلي).
-        """
+        """مسافة نقطة إلى قطعة مستقيمة (تقريب متري محلي)."""
         lat_scale = 111320.0
         lon_scale = 111320.0 * math.cos(math.radians(lat))
 
@@ -614,17 +532,12 @@ class UrbanAreaDetector:
         return math.hypot(x - x_proj, y - y_proj)
 
     def _fetch_osm_data(self, south, north, west, east):
-        """
-        جلب بيانات OSM (طرق + مياه + مدن + مساكن + مزارع + سواحل) من Overpass API.
-        """
+        """جلب بيانات OSM من Overpass."""
         overpass_url = "https://overpass-api.de/api/interpreter"
         padding = 0.08
         s, n = south - padding, north + padding
         w, e = west - padding, east + padding
 
-        # أضفنا:
-        # - landuse=farmland/farm/orchard/vineyard/meadow (مزارع وبساتين).
-        # - natural=coastline + place=sea (سواحل وبحار).
         query = f"""
         [out:json][timeout:30];
         (
@@ -664,13 +577,7 @@ class UrbanAreaDetector:
             return {"elements": []}
 
     def _process_osm_data(self, osm_data):
-        """
-        تحويل بيانات Overpass إلى قوائم:
-        - roads: قائمة خطوط
-        - waters: قائمة خطوط/مضلعات
-        - cities: نقاط
-        - urban_areas: مضلعات landuse حضرية/زراعية
-        """
+        """تحويل بيانات Overpass إلى قوائم بسيطة."""
         nodes: Dict[int, tuple] = {}
         roads: List[List[tuple]] = []
         waters: List[Dict[str, Any]] = []
@@ -683,7 +590,7 @@ class UrbanAreaDetector:
 
         for el in osm_data.get("elements", []):
             etype = el.get("type")
-            tags = el.get("tags", {})
+            tags = el.get("tags", {}) or {}
 
             if etype == "way":
                 coords = [nodes[nid] for nid in el.get("nodes", []) if nid in nodes]
@@ -714,10 +621,6 @@ class UrbanAreaDetector:
             elif etype == "node" and tags.get("place") in ("city", "town", "village"):
                 cities.append((el["lat"], el["lon"]))
 
-            elif etype == "relation" and tags.get("natural") in ("water", "coastline"):
-                # يمكن توسيعها لاحقاً
-                continue
-
         return {
             "roads": roads,
             "waters": waters,
@@ -726,9 +629,7 @@ class UrbanAreaDetector:
         }
 
     def get_urban_mask(self, south, north, west, east, zoom=12):
-        """
-        الحصول على قناع المناطق الحضرية/المائية/الزراعية مع كاش.
-        """
+        """قناع المناطق الحضرية/المائية/الزراعية مع كاش."""
         key = self._bbox_key(south, north, west, east, zoom)
         now = time.time()
 
@@ -750,31 +651,27 @@ class UrbanAreaDetector:
         lat,
         lon,
         urban_mask,
-        road_distance=700,
-        city_distance=5000,
-        water_distance=400,
+        road_distance=800,
+        city_distance=10000,
+        water_distance=700,
     ):
         """
         True لو كانت النقطة قرب:
-        - مدينة/بلدة
+        - مدينة/بلدة (مسافة أكبر لحمايتها)
         - طريق رئيسي
         - مسطح مائي / بحر / مجرى نهر
-        - landuse حضري أو زراعي (مزارع، بساتين...)
-        (لا نضع نقاط تمعدن على هذه المناطق نهائياً)
+        - landuse حضري أو زراعي
         """
-        # مدن / بلدات
         for c_lat, c_lon in urban_mask.get("cities", []):
             if self._haversine_distance(lat, lon, c_lat, c_lon) <= city_distance:
                 return True
 
-        # طرق رئيسية
         for road in urban_mask.get("roads", []):
             for (a_lat, a_lon), (b_lat, b_lon) in zip(road[:-1], road[1:]):
                 d = self._point_to_segment_distance(lat, lon, a_lat, a_lon, b_lat, b_lon)
                 if d <= road_distance:
                     return True
 
-        # مياه (خطوط/مضلعات مبسّطة)
         for water in urban_mask.get("waters", []):
             if "line" in water:
                 for (a_lat, a_lon), (b_lat, b_lon) in zip(
@@ -789,7 +686,6 @@ class UrbanAreaDetector:
                 if point_in_poly(lat, lon, water["poly"]):
                     return True
 
-        # landuse حضري/زراعي كمضلع
         for urban_poly in urban_mask.get("urban_areas", []):
             if len(urban_poly) >= 3 and point_in_poly(lat, lon, urban_poly):
                 return True
@@ -799,7 +695,10 @@ class UrbanAreaDetector:
 
 urban_detector = UrbanAreaDetector()
 
+
 # ===================== بلاطات صور الأقمار الصناعية (ESRI Imagery) =====================
+# (موجودة كخيار إضافي فقط، ولن تُستخدم افتراضيًا لتخفيف التحليل)
+
 
 ESRI_URL = (
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -838,11 +737,11 @@ def fetch_tile(tx, ty, z, timeout=15):
     url = ESRI_URL.format(z=z, x=tx, y=ty)
     r = requests.get(url, timeout=timeout)
     r.raise_for_status()
-    img = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)  # BGR
+    img = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
     return img
 
 
-def fetch_tiles_bbox(n, s, e, w, z=15, max_tiles=64):
+def fetch_tiles_bbox(n, s, e, w, z=15, max_tiles=32):
     tiles_xy = bbox_to_tiles(n, s, e, w, z)
     if len(tiles_xy) > max_tiles:
         z = max(8, z - 1)
@@ -857,16 +756,7 @@ def fetch_tiles_bbox(n, s, e, w, z=15, max_tiles=64):
     return out
 
 
-# ===================== تحليل صور الأقمار الصناعية (أنماط حقيقية) =====================
-
-
 def _summarize_single_tile(img_bgr):
-    """
-    استنتاج ملامح بسيطة من بلاطة واحدة:
-    - كساء جبلي داكن + أودية فاتحة
-    - نقاط داكنة صغيرة (حفر/أنشطة تعدين)
-    - ألوان أكسدة (أصفر/برتقالي/أحمر)
-    """
     if img_bgr is None or img_bgr.size == 0:
         return {
             "dark_fraction": 0.0,
@@ -882,13 +772,11 @@ def _summarize_single_tile(img_bgr):
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     v = hsv[:, :, 2]
 
-    # مناطق داكنة (جبال كحلية/سوداء) ومناطق فاتحة (أودية رملية)
     dark_mask = v < 80
     light_mask = v > 180
     dark_fraction = float(dark_mask.mean())
     light_fraction = float(light_mask.mean())
 
-    # ألوان أكسدة (أصفر/برتقالي/أحمر)
     h_ch = hsv[:, :, 0]
     s_ch = hsv[:, :, 1]
 
@@ -899,12 +787,10 @@ def _summarize_single_tile(img_bgr):
     oxidation_mask = yellow_mask | orange_mask | red_mask1 | red_mask2
     oxidation_fraction = float(oxidation_mask.mean())
 
-    # حواف (شبكة أودية حقيقية من الصورة)
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray, 80, 160)
     edge_fraction = float((edges > 0).mean())
 
-    # حفر صغيرة داكنة (نقاط تعدين أو حفر منجمية)
     pits_score = 0.0
     try:
         dark_binary = dark_mask.astype("uint8") * 255
@@ -914,16 +800,14 @@ def _summarize_single_tile(img_bgr):
         small_pits = 0
         for i in range(1, num_labels):
             a = stats[i, cv2.CC_STAT_AREA]
-            if 5 < a < 300:  # مساحات صغيرة نسبيًا
+            if 5 < a < 300:
                 small_pits += 1
         pits_score = min(1.0, small_pits / 400.0)
     except Exception:
         pits_score = 0.0
 
-    # درجة "شجرية" للشبكة التصريفية (بناءً على كثافة الحواف)
     tree_like_score = min(1.0, edge_fraction * 4.0)
 
-    # كتل جبلية داكنة مع أودية فاتحة حولها (نمط يشبه مناجم السودان وخنيقية)
     if light_fraction > 0.1:
         dark_fan_score = float(max(0.0, min(1.0, (dark_fraction - 0.2) * 3.0)))
     else:
@@ -953,9 +837,6 @@ def _summarize_single_tile(img_bgr):
 
 
 def summarize_tiles_for_bbox(tiles: List[Dict[str, Any]]) -> Dict[str, float]:
-    """
-    تجميع ملخصات جميع البلاطات داخل الـ BBox.
-    """
     if not tiles:
         return {
             "has_imagery": False,
@@ -982,16 +863,8 @@ def summarize_tiles_for_bbox(tiles: List[Dict[str, Any]]) -> Dict[str, float]:
 
 
 def imagery_hints_for_bbox(
-    north, south, east, west, z=15, max_tiles=48
+    north, south, east, west, z=15, max_tiles=32
 ) -> Dict[str, Any]:
-    """
-    يجلب بلاطات صور حقيقية ويعيد تلميحات عامة:
-    - overall_hotspot
-    - tree_like_score
-    - dark_fan_score
-    - pits_score
-    - oxidation_fraction
-    """
     try:
         tiles = fetch_tiles_bbox(north, south, east, west, z=z, max_tiles=max_tiles)
         if not tiles:
@@ -1027,13 +900,11 @@ def predict(request):
       "coordinates": [[lat,lon], ...],
       "patterns": ["tree","leaf","wadis","multi","fractures"],
       "mountainsOnly": true/false,
-      "excludeUrban": true/false,
-      "count": 200
+      "excludeUrban": (سيتم تجاهله، الفلتر مفعّل دائماً),
+      "count": 150
     }
-    - يتجنب المدن/البحار/المزارع (عن طريق UrbanAreaDetector).
-    - يفضّل الدرع العربي والمناطق الجبلية/الانتقالية.
-    - يرجّع ثقة الموقع + الأسباب + نسب لكل سبب.
-    - خارج الدرع العربي: نقاط قليلة جداً وبشروط صارمة.
+    - استبعاد المدن/البحر/المزارع.
+    - نقاط أقل وتحليل أخف.
     """
     if request.method != "POST":
         return HttpResponseBadRequest("يجب استخدام طريقة POST فقط")
@@ -1051,8 +922,9 @@ def predict(request):
             "fractures",
         ]
         mountains_only = bool(payload.get("mountainsOnly", True))
-        exclude_urban = bool(payload.get("excludeUrban", True))
-        count = min(500, int(payload.get("count", 250)))
+        # فلتر حضري دائماً (لحماية المدن والمزارع والبحر)
+        exclude_urban = True
+        count = min(300, int(payload.get("count", 180)))
 
         if not coords or len(coords) < 3:
             return JsonResponse(
@@ -1072,7 +944,6 @@ def predict(request):
             "east": max(lons),
         }
 
-        # قناع حضري/مائي/زراعي للمنطقة
         if exclude_urban:
             urban_mask = urban_detector.get_urban_mask(
                 bbox["south"], bbox["north"], bbox["west"], bbox["east"], zoom=12
@@ -1087,13 +958,16 @@ def predict(request):
         for lat, lon in analysis_points:
             analyzed_points += 1
 
-            # استبعاد مدن / بحار / مزارع / طرق
+            # منع التحليل فوق البحر
+            if is_sea(lat, lon):
+                continue
+
+            # منع المدن/المزارع/المياه
             if exclude_urban and urban_detector.is_urban_area(lat, lon, urban_mask):
                 continue
 
             analysis_result = analyzer.analyze_point(lat, lon, patterns)
 
-            # شرط الجبال فقط (أو انتقالية) لو مفعّل
             if mountains_only and not (
                 analysis_result["flags"]["mountain"]
                 or analysis_result["flags"]["slope"]
@@ -1102,13 +976,12 @@ def predict(request):
             ):
                 continue
 
-            # فلتر الدقة العالية بحسب داخل/خارج الدرع العربي
             if not _accept_geology_point(analysis_result):
                 continue
 
             features.append(create_geojson_feature(lon, lat, analysis_result))
 
-            if len(features) >= 600:
+            if len(features) >= 400:
                 break
 
         features.sort(
@@ -1144,7 +1017,7 @@ def predict(request):
         )
 
 
-# ===================== API: تحليل BBOX شبكي + ربط صور الأقمار الصناعية =====================
+# ===================== API: تحليل BBOX شبكي + ارتباط اختياري بالصور =====================
 
 
 @csrf_exempt
@@ -1156,14 +1029,10 @@ def analyze_bbox_tiles(request):
       "zoom": 12,
       "patterns": [...],
       "mountainsOnly": true/false,
-      "excludeUrban": true/false,
-      "limit": 500
+      "excludeUrban": (يُتجاهل، الفلتر مفعّل دائماً),
+      "useImagery": false,   # افتراضيًا لا يستخدم الصور (أخف)
+      "limit": 350
     }
-    - يستخدم شبكة نقاط فوق الـ BBox.
-    - يربط نتائج التحليل الرياضي مع تلميحات من صور الأقمار الصناعية.
-    - يتجنّب مدن/بحار/مزارع.
-    - يعطي ثقة + أسباب + نسب لكل سبب.
-    - خارج الدرع العربي: نقاط قليلة وصارمة جداً.
     """
     if request.method != "POST":
         return HttpResponseBadRequest("يجب استخدام طريقة POST لهذه الواجهة")
@@ -1185,8 +1054,10 @@ def analyze_bbox_tiles(request):
             "fractures",
         ]
         mountains_only = bool(payload.get("mountainsOnly", True))
-        exclude_urban = bool(payload.get("excludeUrban", True))
-        limit = min(800, int(payload.get("limit", 500)))
+        # فلتر حضري دائماً
+        exclude_urban = True
+        limit = min(500, int(payload.get("limit", 350)))
+        use_imagery = bool(payload.get("useImagery", False))
 
         if not (south < north and west < east):
             return JsonResponse(
@@ -1197,20 +1068,29 @@ def analyze_bbox_tiles(request):
                 status=400,
             )
 
-        # قناع حضري/مائي/زراعي
         if exclude_urban:
             urban_mask = urban_detector.get_urban_mask(south, north, west, east, zoom)
         else:
             urban_mask = {"roads": [], "waters": [], "cities": [], "urban_areas": []}
 
-        # تحليل صور الأقمار الصناعية للـ BBox
-        imagery_hints = imagery_hints_for_bbox(
-            north=north, south=south, east=east, west=west, z=zoom, max_tiles=48
-        )
+        # الصور الفضائية اختيارية الآن (لتخفيف الضغط)
+        if use_imagery:
+            imagery_hints = imagery_hints_for_bbox(
+                north=north, south=south, east=east, west=west, z=zoom, max_tiles=32
+            )
+        else:
+            imagery_hints = {
+                "has_imagery": False,
+                "overall_hotspot": 0.0,
+                "tree_like_score": 0.0,
+                "dark_fan_score": 0.0,
+                "pits_score": 0.0,
+                "oxidation_fraction": 0.0,
+            }
 
-        base_density = max(8, min(20, zoom - 8))
-        cols = max(10, int((east - west) * base_density))
-        rows = max(8, int((north - south) * base_density))
+        base_density = max(5, min(12, zoom - 9))  # أقل من السابق لتخفيف النقاط
+        cols = max(8, int((east - west) * base_density))
+        rows = max(6, int((north - south) * base_density))
 
         step_lat = (north - south) / max(rows, 1)
         step_lon = (east - west) / max(cols, 1)
@@ -1230,37 +1110,41 @@ def analyze_bbox_tiles(request):
             while lon < east and len(features) < limit:
                 analyzed_points += 1
 
+                # منع البحر
+                if is_sea(lat, lon):
+                    lon += step_lon
+                    continue
+
+                # منع المدن/المزارع/المياه
                 if exclude_urban and urban_detector.is_urban_area(lat, lon, urban_mask):
                     lon += step_lon
                     continue
 
                 analysis_result = analyzer.analyze_point(lat, lon, patterns)
 
-                # تعزيز الثقة من صور الأقمار الصناعية
                 if imagery_hints.get("has_imagery", False):
-                    img_factor = 1.0 + 0.35 * hotspot_boost
+                    img_factor = 1.0 + 0.30 * hotspot_boost
                     analysis_result["confidence"] = float(
                         max(0.0, min(1.0, analysis_result["confidence"] * img_factor))
                     )
 
-                    if oxidation_hint > 0.15:
+                    if oxidation_hint > 0.18:
                         analysis_result["reasons"].append(
-                            "صور الأقمار الصناعية تُظهر ألوان أكسدة (أصفر/برتقالي/أحمر) داخل هذا المربع."
+                            "صور الأقمار الصناعية تُظهر ألوان أكسدة داخل هذا المربع."
                         )
-                    if pits_hint > 0.10:
+                    if pits_hint > 0.12:
                         analysis_result["reasons"].append(
-                            "توجد نقاط داكنة صغيرة كثيرة (حُفر/أنشطة تعدين) في البلاطات الفضائية."
+                            "توجد نقاط داكنة صغيرة كثيرة (حُفر/أنشطة تعدين) في الصور."
                         )
                     if dark_fan_hint > 0.25:
                         analysis_result["reasons"].append(
-                            "كتل جبلية داكنة مع أودية فاتحة حولها (نمط يشبه مناجم السودان وخنيقية)."
+                            "كتل جبلية داكنة مع أودية فاتحة حولها (نمط شبيه لمناجم معروفة)."
                         )
                     if tree_like_hint > 0.30:
                         analysis_result["reasons"].append(
-                            "الشبكة التصريفية في الصور حقيقية شجرية/ورقية قوية."
+                            "الشبكة التصريفية في الصور تبدو شجرية/ورقية قوية."
                         )
 
-                # شرط الجبال / الانتقالية
                 if mountains_only and not (
                     analysis_result["flags"]["mountain"]
                     or analysis_result["flags"]["slope"]
@@ -1270,7 +1154,6 @@ def analyze_bbox_tiles(request):
                     lon += step_lon
                     continue
 
-                # فلتر الدقة العالية بحسب داخل/خارج الدرع
                 if not _accept_geology_point(analysis_result):
                     lon += step_lon
                     continue
@@ -1325,10 +1208,7 @@ def analyze_bbox_tiles(request):
 
 @csrf_exempt
 def analyze_place(request):
-    """
-    GET /analyze-place?q=اسم
-    يرجع مركز المكان + bbox عبر Nominatim (داخل السعودية).
-    """
+    """GET /analyze-place?q=اسم – بحث عن مكان داخل السعودية."""
     query = (request.GET.get("q") or "").strip()
     if not query:
         return JsonResponse(
@@ -1348,9 +1228,7 @@ def analyze_place(request):
             "countrycodes": "sa",
             "limit": 1,
         }
-        headers = {
-            "User-Agent": "GoldMap-Pro/1.0 (https://example.com/goldmap)"
-        }
+        headers = {"User-Agent": "GoldMap-Pro/1.0 (https://example.com/goldmap)"}
 
         response = requests.get(
             nominatim_url,
@@ -1415,11 +1293,7 @@ def analyze_place(request):
 
 @csrf_exempt
 def export_geojson(request):
-    """
-    POST /export-geojson
-    body: FeatureCollection
-    يرجع ملف goldmap_analysis_results.geojson للتنزيل.
-    """
+    """POST /export-geojson – يرجع ملف GeoJSON للتنزيل."""
     if request.method != "POST":
         return HttpResponseBadRequest("يجب استخدام طريقة POST لهذه الواجهة")
 
@@ -1457,16 +1331,12 @@ def export_geojson(request):
         )
 
 
-# ===================== API: حفظ النتائج (وهمية حالياً) =====================
+# ===================== API: حفظ النتائج (تجريبي) =====================
 
 
 @csrf_exempt
 def save_hotspots(request):
-    """
-    POST /save-hotspots
-    body: {"data": FeatureCollection}
-    حاليًا: يحسب عدد النقاط ويعيد رقم منطقة وهمي.
-    """
+    """POST /save-hotspots – حفظ تجريبي بدون قاعدة بيانات."""
     if request.method != "POST":
         return HttpResponseBadRequest("يجب استخدام طريقة POST لهذه الواجهة")
 
@@ -1498,15 +1368,12 @@ def save_hotspots(request):
 
 
 def health_check(request):
-    """
-    GET /health
-    لفحص صحة الخدمة.
-    """
+    """GET /health – فحص صحة الخدمة."""
     return JsonResponse(
         {
             "status": "healthy",
             "timestamp": time.time(),
-            "version": "2.0.0",
+            "version": "2.0.1",
             "services": {
                 "geology_analyzer": "active",
                 "urban_detector": "active",
@@ -1518,10 +1385,7 @@ def health_check(request):
 
 @csrf_exempt
 def clear_cache(request):
-    """
-    POST /clear-cache
-    لمسح كاش UrbanAreaDetector.
-    """
+    """POST /clear-cache – مسح كاش UrbanAreaDetector."""
     if request.method != "POST":
         return HttpResponseBadRequest("يجب استخدام طريقة POST لهذه الواجهة")
 
@@ -1533,7 +1397,7 @@ def clear_cache(request):
         return JsonResponse(
             {
                 "success": True,
-                "message": "تم مسح ذاكرة التخزين المؤقت بنجاح",
+            "message": "تم مسح ذاكرة التخزين المؤقت بنجاح",
                 "cleared_entries": cleared,
             }
         )
