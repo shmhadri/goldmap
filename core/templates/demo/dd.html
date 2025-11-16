@@ -1,0 +1,2429 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>GoldMap AI - نظام الكشف الفضائي المتقدم عن المناجم</title>
+    
+    <!-- Leaflet + إضافات -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+    <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+    
+    <style>
+        :root {
+            --primary: #1a56db;
+            --secondary: #10b981;
+            --accent: #ef4444;
+            --gold: #f59e0b;
+            --bg: #0a0f1d;
+            --panel: #0f1a34;
+            --panel2: #102044;
+            --text: #eef3ff;
+            --muted: #a7b6d8;
+            --border: #213052;
+            --chip: #122044;
+            --radius: 18px;
+            --shadow: 0 12px 32px rgba(0,0,0,.35);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        html, body {
+            height: 100%;
+            font-family: system-ui, -apple-system, 'Segoe UI', 'Cairo', Tahoma, sans-serif;
+            touch-action: manipulation;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0f1d, #0f172a);
+            color: var(--text);
+            overflow: hidden;
+        }
+        
+        .container {
+            max-width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            gap: 8px;
+        }
+        
+        header {
+            padding: 12px 15px;
+            border-radius: 12px;
+            background: rgba(15, 26, 52, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 245, 255, 0.2);
+            box-shadow: 0 0 30px rgba(0, 245, 255, 0.08);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 1000;
+        }
+        
+        .logo-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .logo {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 20px;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        }
+        
+        .title-container {
+            flex: 1;
+        }
+        
+        h1 {
+            margin: 0 0 3px;
+            font-size: 18px;
+            font-weight: 900;
+            background: linear-gradient(45deg, #22d3ee, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1.2;
+        }
+        
+        .subtitle {
+            color: #cbd5e1;
+            font-size: 12px;
+            line-height: 1.3;
+        }
+        
+        .menu-toggle {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .menu-toggle:hover {
+            background: rgba(255,255,255,0.15);
+        }
+        
+        .menu-toggle.active {
+            background: rgba(0, 245, 255, 0.2);
+            color: #22d3ee;
+        }
+        
+        .hamburger {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            width: 20px;
+        }
+        
+        .hamburger span {
+            display: block;
+            height: 2px;
+            width: 100%;
+            background-color: currentColor;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+        
+        .hamburger.active span:nth-child(1) {
+            transform: rotate(45deg) translate(5px, 5px);
+        }
+        
+        .hamburger.active span:nth-child(2) {
+            opacity: 0;
+        }
+        
+        .hamburger.active span:nth-child(3) {
+            transform: rotate(-45deg) translate(5px, -5px);
+        }
+        
+        .main {
+            display: flex;
+            flex: 1;
+            gap: 12px;
+            height: calc(100vh - 100px);
+            position: relative;
+        }
+        
+        #map {
+            flex: 1;
+            border-radius: 12px;
+            border: 2px solid rgba(0, 245, 255, 0.18);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            position: relative;
+            min-height: 300px;
+        }
+        
+        .controls {
+            width: 100%;
+            max-width: 400px;
+            background: rgba(15, 26, 52, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 245, 255, 0.18);
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 1000;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+        
+        .controls.active {
+            transform: translateX(0);
+        }
+        
+        .close-controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 8px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+        
+        .group {
+            background: rgba(0, 0, 0, 0.25);
+            border-left: 4px solid #22d3ee;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        
+        .group h2 {
+            margin: 0 0 8px;
+            color: #22d3ee;
+            font-size: 14px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .row {
+            display: flex;
+            gap: 6px;
+        }
+        
+        input, select, button {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #0f1b36;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .btn {
+            cursor: pointer;
+            font-weight: 700;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 12px;
+            touch-action: manipulation;
+        }
+        
+        .btn:active {
+            transform: scale(0.98);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(180deg, #24b7ff, #2ad3c9);
+            color: #031b2b;
+            border: 0;
+        }
+        
+        .btn-sec {
+            background: linear-gradient(180deg, #1b2b56, #162445);
+            color: #e6efff;
+        }
+        
+        .btn-warn {
+            background: linear-gradient(180deg, #ffd166, #f59e0b);
+            color: #2a1d00;
+            border: 0;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(180deg, #ef4444, #dc2626);
+            color: #fff;
+            border: 0;
+        }
+        
+        .btn-success {
+            background: linear-gradient(180deg, #10b981, #059669);
+            color: #fff;
+            border: 0;
+        }
+        
+        .small {
+            font-size: 11px;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: #0b1220eb;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px;
+            color: #dfe7ff;
+            z-index: 500;
+            max-width: 250px;
+            font-size: 11px;
+        }
+        
+        .legrow {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin: 3px 0;
+            font-size: 11px;
+        }
+        
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            flex-shrink: 0;
+        }
+        
+        .progress {
+            height: 6px;
+            background: #0f2248;
+            border-radius: 8px;
+            border: 1px solid #1a2e5a;
+            overflow: hidden;
+            margin: 6px 0;
+        }
+        
+        .progress>span {
+            display: block;
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, #60a5fa, #22d3ee);
+            transition: width 0.3s;
+        }
+        
+        .kpi {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        
+        .kpi .card {
+            background: #102044;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px;
+            text-align: center;
+        }
+        
+        .kpi .num {
+            font-weight: 900;
+            font-size: 14px;
+        }
+        
+        .notice {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            z-index: 9999;
+            background: #059669;
+            color: #fff;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 8px 10px;
+            transform: translateX(150%);
+            transition: transform 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            max-width: 80%;
+        }
+        
+        .notice.show {
+            transform: translateX(0);
+        }
+        
+        .layer-switch {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 600;
+            display: flex;
+            gap: 4px;
+            background: #0b1220c5;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px;
+            flex-wrap: wrap;
+            max-width: calc(100% - 16px);
+        }
+        
+        .layer-switch button {
+            width: auto;
+            white-space: nowrap;
+            padding: 5px 8px;
+            font-size: 11px;
+        }
+        
+        .drawing-controls {
+            position: absolute;
+            top: 50px;
+            right: 8px;
+            z-index: 600;
+            display: flex;
+            gap: 4px;
+            background: #0b1220c5;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px;
+            flex-wrap: wrap;
+            max-width: calc(100% - 16px);
+        }
+        
+        .drawing-controls button {
+            width: auto;
+            white-space: nowrap;
+            padding: 5px 8px;
+            font-size: 11px;
+        }
+        
+        .stylepick {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+        
+        .stylepick label {
+            display: flex;
+            gap: 3px;
+            align-items: center;
+            font-size: 12px;
+        }
+        
+        .resbox {
+            background: #0f1b36;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px;
+            max-height: 150px;
+            overflow: auto;
+            font-size: 12px;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 8px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .tab {
+            padding: 6px 10px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            font-size: 13px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        
+        .tab.active {
+            border-bottom: 2px solid #22d3ee;
+            color: #22d3ee;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .gold-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        
+        .high-prob {
+            background: #dc2626;
+        }
+        
+        .med-prob {
+            background: #f59e0b;
+        }
+        
+        .low-prob {
+            background: #84cc16;
+        }
+        
+        .dropdown-menu {
+            position: absolute;
+            top: 60px;
+            right: 10px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px;
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 180px;
+            box-shadow: var(--shadow);
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        }
+        
+        .dropdown-menu.active {
+            display: flex;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .dropdown-header {
+            padding: 8px 10px;
+            font-weight: bold;
+            color: #22d3ee;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .dropdown-close {
+            background: none;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .dropdown-item {
+            padding: 10px;
+            border-radius: 8px;
+            background: var(--panel2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .dropdown-item:active {
+            background: var(--chip);
+        }
+        
+        .dropdown-item-info {
+            font-size: 10px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+        
+        .coordinates-box {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            z-index: 600;
+            background: #0b1220c5;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px;
+            color: #dfe7ff;
+            font-size: 11px;
+            max-width: 200px;
+        }
+        
+        .share-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+            padding: 15px;
+        }
+        
+        .share-modal.active {
+            display: flex;
+        }
+        
+        .share-content {
+            background: var(--panel);
+            border-radius: 12px;
+            padding: 15px;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .share-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        
+        .share-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: var(--panel2);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .share-option:active {
+            background: var(--chip);
+            transform: scale(0.98);
+        }
+        
+        .mobile-bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-around;
+            padding: 8px;
+            z-index: 800;
+            display: none;
+        }
+        
+        .nav-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: var(--text);
+            padding: 8px;
+            border-radius: 8px;
+            flex: 1;
+            max-width: 80px;
+        }
+        
+        .nav-btn.active {
+            background: var(--panel2);
+            color: #22d3ee;
+        }
+        
+        .nav-icon {
+            font-size: 18px;
+        }
+        
+        .nav-text {
+            font-size: 10px;
+        }
+        
+        /* تحسينات للشاشات الصغيرة */
+        @media (max-width: 768px) {
+            .container {
+                padding: 5px;
+            }
+            
+            header {
+                padding: 10px;
+            }
+            
+            h1 {
+                font-size: 16px;
+            }
+            
+            .subtitle {
+                font-size: 11px;
+            }
+            
+            .logo {
+                width: 35px;
+                height: 35px;
+                font-size: 18px;
+            }
+            
+            .main {
+                flex-direction: column;
+                height: calc(100vh - 140px);
+            }
+            
+            #map {
+                min-height: 50vh;
+            }
+            
+            .controls {
+                width: 100%;
+                max-width: none;
+            }
+            
+            .layer-switch, .drawing-controls {
+                flex-direction: column;
+                max-width: 120px;
+            }
+            
+            .row {
+                flex-direction: column;
+            }
+            
+            .mobile-bottom-nav {
+                display: flex;
+            }
+            
+            .coordinates-box {
+                max-width: 150px;
+                font-size: 10px;
+                padding: 4px;
+            }
+            
+            .legend {
+                max-width: 200px;
+                font-size: 10px;
+                padding: 6px;
+            }
+            
+            .dropdown-menu {
+                right: 5px;
+                left: 5px;
+                min-width: auto;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 14px;
+            }
+            
+            .tab {
+                padding: 5px 8px;
+                font-size: 12px;
+            }
+            
+            .btn {
+                padding: 8px 10px;
+                font-size: 13px;
+            }
+            
+            .group {
+                padding: 8px;
+            }
+            
+            .controls {
+                padding: 10px;
+            }
+            
+            .coordinates-box {
+                max-width: 130px;
+            }
+        }
+        
+        /* منع التكبير على iOS */
+        @supports (-webkit-touch-callout: none) {
+            input, select, textarea {
+                font-size: 16px !important; /* منع التكبير التلقائي في iOS */
+            }
+        }
+        
+        .toggle-controls-btn {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: rgba(15, 26, 52, 0.9);
+            border: 1px solid rgba(0, 245, 255, 0.3);
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 999;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .search-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 8px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .search-tab {
+            padding: 6px 10px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            font-size: 13px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        
+        .search-tab.active {
+            border-bottom: 2px solid #22d3ee;
+            color: #22d3ee;
+        }
+        
+        .search-tab-content {
+            display: none;
+        }
+        
+        .search-tab-content.active {
+            display: block;
+        }
+        
+        .exclusion-info {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 8px;
+            margin-top: 8px;
+            font-size: 11px;
+            color: #fca5a5;
+        }
+        
+        .mini-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 26, 52, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0, 245, 255, 0.2);
+            padding: 8px 15px;
+            z-index: 1100;
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .mini-header-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #22d3ee;
+        }
+        
+        .mini-header-close {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 6px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        @media (max-width: 768px) {
+            .mini-header {
+                display: flex;
+            }
+            
+            header {
+                margin-top: 45px;
+            }
+        }
+        
+        /* تحسينات إضافية */
+        .layer-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 26, 52, 0.9);
+            padding: 10px 15px;
+            border-radius: 8px;
+            color: #22d3ee;
+            font-size: 14px;
+            z-index: 700;
+            display: none;
+        }
+        
+        .layer-loading.active {
+            display: block;
+        }
+        
+        .optimized-layer {
+            transition: opacity 0.3s;
+        }
+        
+        .optimized-layer.loading {
+            opacity: 0.7;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(34, 211, 238, 0.3);
+            border-radius: 50%;
+            border-top-color: #22d3ee;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .analysis-details {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 8px;
+            margin-top: 8px;
+            font-size: 11px;
+        }
+        
+        .analysis-factor {
+            display: flex;
+            justify-content: space-between;
+            margin: 4px 0;
+        }
+        
+        .factor-bar {
+            height: 6px;
+            background: #1a2e5a;
+            border-radius: 3px;
+            margin-top: 2px;
+            overflow: hidden;
+        }
+        
+        .factor-value {
+            height: 100%;
+            background: linear-gradient(90deg, #22d3ee, #10b981);
+            border-radius: 3px;
+        }
+        
+        .geological-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        
+        .indicator-wadi {
+            background: #22c55e;
+        }
+        
+        .indicator-fault {
+            background: #8b5cf6;
+        }
+        
+        .indicator-oxidation {
+            background: #ef4444;
+        }
+        
+        .indicator-rock {
+            background: #f59e0b;
+        }
+        
+        .indicator-elevation {
+            background: #60a5fa;
+        }
+        
+        .indicator-color {
+            background: #ec4899;
+        }
+        
+        .indicator-quartz {
+            background: #d1d5db;
+        }
+        
+        .advanced-search-panel {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+            margin-top: 8px;
+        }
+        
+        .search-criteria {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .criteria-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .criteria-label {
+            font-size: 10px;
+            color: var(--muted);
+        }
+        
+        .criteria-value {
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .exclusion-layer {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px dashed rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 8px;
+            margin-top: 8px;
+            font-size: 11px;
+        }
+        
+        .exclusion-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 4px 0;
+        }
+        
+        .reset-btn {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(15, 26, 52, 0.9);
+            border: 1px solid rgba(0, 245, 255, 0.3);
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 999;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .advanced-analysis {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+            margin-top: 8px;
+        }
+        
+        .analysis-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 4px 0;
+        }
+        
+        .tab-transition {
+            transition: all 0.3s ease;
+        }
+        
+        .smooth-transition {
+            transition: all 0.3s ease;
+        }
+        
+        /* تحسينات جديدة */
+        .tab-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .tab-header {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            flex-shrink: 0;
+        }
+        
+        .tab-button {
+            padding: 10px 15px;
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            white-space: nowrap;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .tab-button.active {
+            color: #22d3ee;
+            border-bottom-color: #22d3ee;
+        }
+        
+        .tab-panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 0;
+            display: none;
+        }
+        
+        .tab-panel.active {
+            display: block;
+        }
+        
+        .city-search-container {
+            margin-bottom: 12px;
+        }
+        
+        .city-search-input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #0f1b36;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            margin-bottom: 8px;
+        }
+        
+        .city-search-results {
+            max-height: 150px;
+            overflow-y: auto;
+            background: #0f1b36;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        
+        .city-result {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .city-result:hover {
+            background: var(--panel2);
+        }
+        
+        .city-result:last-child {
+            border-bottom: none;
+        }
+        
+        .analysis-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .analysis-controls .btn {
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .export-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .export-controls .btn {
+            flex: 1;
+            min-width: 140px;
+        }
+        
+        .layer-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .layer-control-group {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+        }
+        
+        .layer-control-group h3 {
+            margin: 0 0 8px;
+            color: #22d3ee;
+            font-size: 13px;
+        }
+        
+        .layer-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+        }
+        
+        .layer-checkbox input {
+            width: auto;
+        }
+        
+        .layer-checkbox label {
+            flex: 1;
+            font-size: 12px;
+        }
+        
+        .results-summary {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .results-summary h3 {
+            margin: 0 0 8px;
+            color: #22d3ee;
+            font-size: 13px;
+        }
+        
+        .results-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        
+        .stat-item {
+            background: #102044;
+            border-radius: 6px;
+            padding: 6px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+        
+        .stat-label {
+            font-size: 10px;
+            color: var(--muted);
+        }
+        
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        
+        .quick-action-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px;
+            font-size: 12px;
+        }
+        
+        /* تحسينات جديدة للقائمة المنسدلة */
+        .enhanced-dropdown {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 320px;
+            background: var(--panel);
+            border-left: 1px solid var(--border);
+            z-index: 2000;
+            transform: translateX(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: -5px 0 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        .enhanced-dropdown.active {
+            transform: translateX(0);
+        }
+        
+        .dropdown-header {
+            padding: 20px;
+            background: var(--panel2);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .dropdown-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #22d3ee;
+        }
+        
+        .dropdown-close-btn {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        
+        .dropdown-close-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .dropdown-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .dropdown-section {
+            margin-bottom: 25px;
+        }
+        
+        .dropdown-section-title {
+            font-size: 14px;
+            color: #22d3ee;
+            margin-bottom: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .dropdown-item-large {
+            padding: 15px;
+            background: var(--panel2);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        
+        .dropdown-item-large:hover {
+            background: var(--chip);
+            transform: translateY(-2px);
+            border-color: rgba(34, 211, 238, 0.3);
+        }
+        
+        .dropdown-item-large:active {
+            transform: translateY(0);
+        }
+        
+        .dropdown-item-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: rgba(34, 211, 238, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #22d3ee;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .dropdown-item-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 15px;
+        }
+        
+        .dropdown-item-desc {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+        
+        .dropdown-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1999;
+            display: none;
+        }
+        
+        .dropdown-backdrop.active {
+            display: block;
+        }
+        
+        /* تحسينات الخريطة مع القائمة المفتوحة */
+        .map-with-sidebar {
+            transition: margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .map-with-sidebar.dropdown-active {
+            margin-right: 320px;
+        }
+        
+        @media (max-width: 768px) {
+            .enhanced-dropdown {
+                width: 100%;
+            }
+            
+            .map-with-sidebar.dropdown-active {
+                margin-right: 0;
+            }
+        }
+        
+        /* تحسينات التحليل الجيولوجي */
+        .geological-analysis-card {
+            background: var(--panel2);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid var(--border);
+        }
+        
+        .analysis-score {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        
+        .score-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #22d3ee;
+        }
+        
+        .score-label {
+            font-size: 12px;
+            color: var(--muted);
+        }
+        
+        .analysis-factors {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .factor-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .factor-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        
+        .factor-details {
+            flex: 1;
+        }
+        
+        .factor-name {
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        
+        .factor-bar {
+            height: 4px;
+            background: #1a2e5a;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .factor-progress {
+            height: 100%;
+            border-radius: 2px;
+        }
+        
+        /* تحسينات البحث المتقدم */
+        .advanced-search-filters {
+            background: var(--panel2);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        
+        .filter-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #22d3ee;
+        }
+        
+        .filter-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .filter-option {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 12px;
+        }
+        
+        .filter-option.active {
+            background: rgba(34, 211, 238, 0.2);
+            border-color: #22d3ee;
+            color: #22d3ee;
+        }
+        
+        .filter-slider {
+            padding: 10px 0;
+        }
+        
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        .slider-value {
+            color: #22d3ee;
+            font-weight: bold;
+        }
+        
+        .slider-container {
+            padding: 0 5px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 5px;
+            border-radius: 5px;
+            background: #1a2e5a;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #22d3ee;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <!-- رأس صغير للجوال -->
+    <div class="mini-header" id="miniHeader">
+        <div class="mini-header-title">GoldMap AI</div>
+        <button class="mini-header-close" id="miniHeaderClose">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <!-- القائمة المنسدلة المحسنة -->
+    <div class="dropdown-backdrop" id="dropdownBackdrop"></div>
+    <div class="enhanced-dropdown" id="enhancedDropdown">
+        <div class="dropdown-header">
+            <div class="dropdown-title">القائمة الرئيسية</div>
+            <button class="dropdown-close-btn" id="dropdownCloseBtn">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="dropdown-content">
+            <div class="dropdown-section">
+                <div class="dropdown-section-title">
+                    <i class="fas fa-tachometer-alt"></i>
+                    التحليلات الرئيسية
+                </div>
+                
+                <div class="dropdown-item-large" data-tab="search">
+                    <div class="dropdown-item-icon">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <div class="dropdown-item-title">بحث المناطق</div>
+                    <div class="dropdown-item-desc">البحث عن المناطق الجبلية والأودية المحتملة للتنقيب</div>
+                </div>
+                
+                <div class="dropdown-item-large" data-tab="layers">
+                    <div class="dropdown-item-icon">
+                        <i class="fas fa-layer-group"></i>
+                    </div>
+                    <div class="dropdown-item-title">الطبقات الجيولوجية</div>
+                    <div class="dropdown-item-desc">إدارة طبقات الخرائط والبيانات الجيولوجية</div>
+                </div>
+                
+                <div class="dropdown-item-large" data-tab="analysis">
+                    <div class="dropdown-item-icon">
+                        <i class="fas fa-draw-polygon"></i>
+                    </div>
+                    <div class="dropdown-item-title">التحليل المتقدم</div>
+                    <div class="dropdown-item-desc">تحليل المناطق والكشف عن الأنماط الجيولوجية</div>
+                </div>
+            </div>
+            
+            <div class="dropdown-section">
+                <div class="dropdown-section-title">
+                    <i class="fas fa-chart-line"></i>
+                    أدوات متقدمة
+                </div>
+                
+                <div class="dropdown-item-large" data-tab="export">
+                    <div class="dropdown-item-icon">
+                        <i class="fas fa-download"></i>
+                    </div>
+                    <div class="dropdown-item-title">تصدير النتائج</div>
+                    <div class="dropdown-item-desc">تصدير النتائج ومشاركة الإحداثيات والتقارير</div>
+                </div>
+                
+                <div class="dropdown-item-large" id="toggleControlsEnhanced">
+                    <div class="dropdown-item-icon">
+                        <i class="fas fa-eye"></i>
+                    </div>
+                    <div class="dropdown-item-title">إظهار/إخفاء القائمة</div>
+                    <div class="dropdown-item-desc">إظهار أو إخفاء لوحة التحكم الجانبية</div>
+                </div>
+                
+                <div class="dropdown-item-large" id="advancedAnalysisEnhanced">
+                    <div class="dropdown-item-icon">
+                        <i class="fas fa-microscope"></i>
+                    </div>
+                    <div class="dropdown-item-title">تحليل جيولوجي متقدم</div>
+                    <div class="dropdown-item-desc">تحليل متعمق للخصائص الجيولوجية والمعادن</div>
+                </div>
+            </div>
+            
+            <div class="dropdown-section">
+                <div class="dropdown-section-title">
+                    <i class="fas fa-cogs"></i>
+                    إعدادات النظام
+                </div>
+                
+                <div class="dropdown-item-large" id="resetSystemEnhanced">
+                    <div class="dropdown-item-icon">
+                        <i class="fas fa-undo"></i>
+                    </div>
+                    <div class="dropdown-item-title">إعادة ضبط النظام</div>
+                    <div class="dropdown-item-desc">إعادة تعيين الخريطة والإعدادات إلى الوضع الافتراضي</div>
+                </div>
+                
+                <div class="dropdown-item-large" id="systemHealthEnhanced">
+                    <div class="dropdown-item-icon">
+                        <i class="fas fa-stethoscope"></i>
+                    </div>
+                    <div class="dropdown-item-title">فحص صحة النظام</div>
+                    <div class="dropdown-item-desc">فحص أداء النظام واتصالات البيانات</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="logo-title">
+                <div class="logo">
+                    <i class="fas fa-hammer"></i>
+                </div>
+                <div class="title-container">
+                    <h1>GoldMap AI</h1>
+                    <div class="subtitle">نظام الكشف الفضائي المتقدم عن المناجم</div>
+                </div>
+            </div>
+            
+            <!-- زر القائمة المحسن -->
+            <button class="menu-toggle" id="menuToggle">
+                <div class="hamburger" id="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </button>
+            
+            <div class="coordinates-box" id="coordinatesBox">
+                إحداثيات المؤشر: <span id="coordsText">انقل المؤشر على الخريطة</span>
+            </div>
+        </header>
+
+        <div class="main">
+            <div id="map" class="map-with-sidebar">
+                <!-- مؤشر تحميل الطبقات -->
+                <div class="layer-loading" id="layerLoading">
+                    <span class="loading-spinner"></span> جاري تحميل الطبقة...
+                </div>
+                
+                <button class="toggle-controls-btn" id="toggleControlsBtn">
+                    <i class="fas fa-chevron-left" id="toggleIcon"></i>
+                </button>
+                
+                <button class="reset-btn" id="resetBtn">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                
+                <div class="layer-switch">
+                    <button id="btnStd" class="btn btn-sec"><i class="fa-solid fa-map"></i> عادية</button>
+                    <button id="btnSat" class="btn btn-sec"><i class="fa-solid fa-earth-americas"></i> أقمار</button>
+                    <button id="btnHill" class="btn btn-sec"><i class="fa-solid fa-mountain"></i> تلال</button>
+                    <button id="btnTopo" class="btn btn-sec"><i class="fa-solid fa-map-location-dot"></i> طبوغرافيا</button>
+                    <button id="btnGeo" class="btn btn-sec"><i class="fa-solid fa-layer-group"></i> جيولوجي</button>
+                    <button id="btnNgs" class="btn btn-sec"><i class="fa-solid fa-map-location"></i> NGS</button>
+                </div>
+                
+                <div class="drawing-controls" id="drawingControls" style="display: none;">
+                    <button id="btnFinishDraw" class="btn btn-success"><i class="fa-solid fa-check"></i> إنهاء الرسم</button>
+                    <button id="btnCancelDraw" class="btn btn-danger"><i class="fa-solid fa-times"></i> إلغاء الرسم</button>
+                </div>
+                
+                <!-- مفتاح ألوان -->
+                <div class="legend" id="legend">
+                    <h3 style="margin-top:0;margin-bottom:6px;font-size:12px;">مفتاح احتمالية الذهب</h3>
+                    <div class="legrow"><div class="dot high-prob"></div>احتمال عالٍ (90-100%)</div>
+                    <div class="legrow"><div class="dot med-prob"></div>احتمال متوسط (70-89%)</div>
+                    <div class="legrow"><div class="dot low-prob"></div>احتمال منخفض (50-69%)</div>
+                    <hr style="border:none;height:1px;background:#1e335f;margin:4px 0">
+                    <div class="legrow"><div class="geological-indicator indicator-wadi"></div>نمط الأودية الشجرية</div>
+                    <div class="legrow"><div class="geological-indicator indicator-fault"></div>الصدوع الرئيسية</div>
+                    <div class="legrow"><div class="geological-indicator indicator-oxidation"></div>أكسدة متعددة الألوان</div>
+                    <div class="legrow"><div class="geological-indicator indicator-rock"></div>نوع الصخور المناسب</div>
+                    <div class="legrow"><div class="geological-indicator indicator-elevation"></div>نموذج الارتفاعات</div>
+                    <div class="legrow"><div class="geological-indicator indicator-color"></div>التعدد اللوني</div>
+                    <div class="legrow"><div class="geological-indicator indicator-quartz"></div>عروق كوارتز سطحية</div>
+                </div>
+            </div>
+
+            <aside class="controls active" id="controlsPanel">
+                <button class="close-controls" id="closeControls">
+                    <i class="fas fa-times"></i>
+                </button>
+                
+                <div class="tab-container">
+                    <div class="tab-header">
+                        <button class="tab-button active" data-tab="search">بحث المناطق</button>
+                        <button class="tab-button" data-tab="layers">الطبقات</button>
+                        <button class="tab-button" data-tab="analysis">التحليل</button>
+                        <button class="tab-button" data-tab="export">تصدير ومشاركة</button>
+                    </div>
+                    
+                    <div class="tab-panel active" id="search-tab">
+                        <div class="city-search-container">
+                            <input type="text" class="city-search-input" id="citySearchInput" placeholder="ابحث عن مدينة أو منطقة...">
+                            <div class="city-search-results" id="citySearchResults" style="display: none;"></div>
+                        </div>
+                        
+                        <div class="group">
+                            <h2><i class="fa-solid fa-magnifying-glass-location"></i> بحث المناطق</h2>
+                            <div class="row">
+                                <input id="q" placeholder="مثال: مهد الذهب، وادي بيشة" maxlength="60">
+                                <button id="btnSearch" class="btn btn-primary"><i class="fas fa-search"></i> بحث</button>
+                            </div>
+                            <div class="small">ابحث عن المناطق الجبلية والأودية في السعودية</div>
+                            <div class="exclusion-info">
+                                <i class="fas fa-info-circle"></i> يتم استبعاد البحار والمدن والطرق والمباني تلقائياً من نتائج البحث
+                            </div>
+                            <div class="resbox" id="areaBox">جاهز للبحث…</div>
+                        </div>
+                        
+                        <div class="group">
+                            <h2><i class="fa-solid fa-map-pin"></i> المناطق التاريخية للتنقيب</h2>
+                            <div class="resbox" id="miningAreasBox">
+                                <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> مهد الذهب</div>
+                                <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> الصخيبرات</div>
+                                <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> بلغة</div>
+                                <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> وادي بيشة</div>
+                                <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> منجم الأمار</div>
+                                <div class="legrow"><i class="fa-solid fa-location-dot" style="color:#f59e0b"></i> منجم الحجار</div>
+                                <div class="small">انقر على أي منطقة للانتقال إليها</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-panel" id="layers-tab">
+                        <div class="layer-controls">
+                            <div class="layer-control-group">
+                                <h3><i class="fa-solid fa-layer-group"></i> طبقات جيولوجية/معادن</h3>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="wmsMrds">
+                                    <label for="wmsMrds">USGS MRDS (مناجم)</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="wmsFaults">
+                                    <label for="wmsFaults">خطوط الصدوع الجيولوجية</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="wmsMinerals">
+                                    <label for="wmsMinerals">مناطق المعادن</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="wmsGeology">
+                                    <label for="wmsGeology">الخرائط الجيولوجية</label>
+                                </div>
+                            </div>
+                            
+                            <div class="layer-control-group">
+                                <h3><i class="fa-solid fa-fire-flame-simple"></i> حراري معدني</h3>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="chkThermal">
+                                    <label for="chkThermal">تفعيل التلوين الحراري</label>
+                                </div>
+                                <div class="small">محاكاة لبيانات حرارية للكشف عن الأنماط المعدنية</div>
+                            </div>
+                            
+                            <div class="layer-control-group">
+                                <h3><i class="fa-solid fa-globe"></i> طبقات إضافية</h3>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="wmsAster">
+                                    <label for="wmsAster">ASTER GDEM (تضاريس)</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="wmsUsgs">
+                                    <label for="wmsUsgs">USGS Landsat (صور)</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="wmsMav">
+                                    <label for="wmsMav">Mavink (جيوفيزيائي)</label>
+                                </div>
+                            </div>
+                            
+                            <div class="layer-control-group">
+                                <h3><i class="fa-solid fa-ban"></i> طبقات الاستبعاد</h3>
+                                <div class="exclusion-layer">
+                                    <div class="layer-checkbox">
+                                        <input type="checkbox" id="excludeCities" checked>
+                                        <label for="excludeCities">استبعاد المدن والمناطق المأهولة</label>
+                                    </div>
+                                    <div class="layer-checkbox">
+                                        <input type="checkbox" id="excludeRoads" checked>
+                                        <label for="excludeRoads">استبعاد الطرق الرئيسية</label>
+                                    </div>
+                                    <div class="layer-checkbox">
+                                        <input type="checkbox" id="excludeBuildings" checked>
+                                        <label for="excludeBuildings">استبعاد المباني والمنشآت</label>
+                                    </div>
+                                    <div class="layer-checkbox">
+                                        <input type="checkbox" id="excludeWater" checked>
+                                        <label for="excludeWater">استبعاد البحار والمسطحات المائية</label>
+                                    </div>
+                                    <div class="layer-checkbox">
+                                        <input type="checkbox" id="excludeFarms" checked>
+                                        <label for="excludeFarms">استبعاد المزارع والمناطق الزراعية</label>
+                                    </div>
+                                </div>
+                                <div class="small">سيتم استبعاد هذه المناطق من نتائج التحليل والبحث</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-panel" id="analysis-tab">
+                        <div class="group">
+                            <h2><i class="fa-solid fa-draw-polygon"></i> رسم منطقة التحليل</h2>
+                            <div class="row">
+                                <button id="btnDrawPoly" class="btn btn-primary"><i class="fa-solid fa-pen-ruler"></i> رسم مضلع</button>
+                                <button id="btnDrawRect" class="btn btn-primary"><i class="fa-solid fa-square"></i> رسم مستطيل</button>
+                            </div>
+                            <div class="small">ارسم منطقة على الخريطة للتحليل (تجنب المناطق المأهولة)</div>
+                            <div id="drawnInfo" class="small" style="margin-top:8px;color:#22d3ee">لم يتم رسم أي منطقة بعد</div>
+                        </div>
+                        
+                        <div class="group">
+                            <h2><i class="fa-solid fa-diagram-project"></i> كشف الأنماط</h2>
+                            <div class="layer-checkbox">
+                                <input type="checkbox" id="patBranches" checked>
+                                <label for="patBranches">النمط الشجري (تشعّب جبال)</label>
+                            </div>
+                            <div class="layer-checkbox">
+                                <input type="checkbox" id="patLeaf" checked>
+                                <label for="patLeaf">النمط الورقي (أحواض/جيوب)</label>
+                            </div>
+                            <div class="layer-checkbox">
+                                <input type="checkbox" id="patBlue" checked>
+                                <label for="patBlue">الأودية الزرقاء</label>
+                            </div>
+
+                            <div class="stylepick">
+                                <span class="small">نمط العرض:</span>
+                                <label><input type="radio" name="style" value="points" checked> نقاط</label>
+                                <label><input type="radio" name="style" value="heat"> حرارية</label>
+                            </div>
+
+                            <div class="analysis-controls">
+                                <button id="btnAuto" class="btn btn-primary"><i class="fa-solid fa-bolt"></i> تحليل المنطقة المرئية</button>
+                                <button id="btnScan" class="btn btn-primary"><i class="fa-solid fa-draw-polygon"></i> تحليل المنطقة المرسومة</button>
+                            </div>
+
+                            <div class="progress"><span id="prog"></span></div>
+                            
+                            <div class="results-summary">
+                                <h3>إحصائيات التحليل</h3>
+                                <div class="results-stats">
+                                    <div class="stat-item">
+                                        <div class="stat-value" id="mBlue">0</div>
+                                        <div class="stat-label">أودية</div>
+                                    </div>
+                                    <div class="stat-item">
+                                        <div class="stat-value" id="mBr">0</div>
+                                        <div class="stat-label">تشعبات</div>
+                                    </div>
+                                    <div class="stat-item">
+                                        <div class="stat-value" id="mLeaf">0</div>
+                                        <div class="stat-label">أحواض</div>
+                                    </div>
+                                    <div class="stat-item">
+                                        <div class="stat-value" id="kShown">0</div>
+                                        <div class="stat-label">نتائج</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="group">
+                            <h2><i class="fa-solid fa-microscope"></i> تحليل جيولوجي متقدم</h2>
+                            <div class="advanced-analysis">
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="analyzeColor" checked>
+                                    <label for="analyzeColor">التعدد اللوني (Multi-color patterns)</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="analyzeQuartz" checked>
+                                    <label for="analyzeQuartz">عروق كوارتز سطحية (Surface quartz veins)</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="analyzeOxidation" checked>
+                                    <label for="analyzeOxidation">مناطق الأكسدة (Oxidation zones)</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="analyzeFaults" checked>
+                                    <label for="analyzeFaults">الصدوع والكسور (Faults & Fractures)</label>
+                                </div>
+                                <div class="layer-checkbox">
+                                    <input type="checkbox" id="analyzeHydrothermal" checked>
+                                    <label for="analyzeHydrothermal">النشاط الحراري المائي (Hydrothermal activity)</label>
+                                </div>
+                            </div>
+                            <div class="small">تفعيل تحليل المعايير الجيولوجية المتقدمة لزيادة دقة النتائج</div>
+                        </div>
+                        
+                        <div class="group">
+                            <h2><i class="fa-solid fa-search-plus"></i> بحث متقدم</h2>
+                            <div class="quick-actions">
+                                <button id="btnSearchValleys" class="btn btn-success quick-action-btn"><i class="fa-solid fa-water"></i> بحث عن أودية</button>
+                                <button id="btnSearchSimilar" class="btn btn-warn quick-action-btn"><i class="fa-solid fa-gem"></i> مناجم مشابهة</button>
+                            </div>
+                            <div class="small">البحث عن مناطق مشابهة لمنجم مهد الذهب</div>
+                            <div class="exclusion-info">
+                                <i class="fas fa-info-circle"></i> يتم استبعاد البحار والمدن والطرق والمباني تلقائياً من نتائج البحث
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-panel" id="export-tab">
+                        <div class="group">
+                            <h2><i class="fa-solid fa-download"></i> تصدير النتائج</h2>
+                            <div class="export-controls">
+                                <button id="btnExportKML" class="btn btn-primary"><i class="fa-solid fa-file-export"></i> تصدير KML</button>
+                                <button id="btnExportGeoJSON" class="btn btn-primary"><i class="fa-solid fa-file-code"></i> تصدير GeoJSON</button>
+                            </div>
+                            <div class="small">حفظ النتائج لاستخدامها في برامج أخرى</div>
+                        </div>
+                        
+                        <div class="group">
+                            <h2><i class="fa-solid fa-share-nodes"></i> مشاركة النتائج</h2>
+                            <div class="export-controls">
+                                <button id="btnShareWhatsApp" class="btn btn-success"><i class="fa-brands fa-whatsapp"></i> واتساب</button>
+                                <button id="btnShareGoogle" class="btn btn-primary"><i class="fa-brands fa-google"></i> خرائط جوجل</button>
+                            </div>
+                            <div class="small">مشاركة الإحداثيات والنتائج عبر التطبيقات</div>
+                        </div>
+                        
+                        <div class="group">
+                            <h2><i class="fa-solid fa-screwdriver-wrench"></i> إدارة النظام</h2>
+                            <div class="export-controls">
+                                <button id="btnClear" class="btn btn-warn"><i class="fa-solid fa-broom"></i> مسح النتائج</button>
+                                <button id="btnClearDraw" class="btn btn-warn"><i class="fa-solid fa-eraser"></i> مسح الرسم</button>
+                                <button id="btnHealth" class="btn btn-sec"><i class="fa-solid fa-stethoscope"></i> فحص النظام</button>
+                            </div>
+                            <div id="healthMsg" class="small">—</div>
+                        </div>
+                    </div>
+                    
+                    <div class="group">
+                        <h2><i class="fa-solid fa-list"></i> نتائج التحليل</h2>
+                        <div class="resbox" id="results"><div>لا توجد نتائج بعد. استخدم أدوات التحليل.</div></div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+        
+        <!-- شريط التنقل السفلي للجوال -->
+        <nav class="mobile-bottom-nav">
+            <button class="nav-btn active" data-tab="search">
+                <i class="fas fa-search nav-icon"></i>
+                <span class="nav-text">بحث</span>
+            </button>
+            <button class="nav-btn" data-tab="layers">
+                <i class="fas fa-layer-group nav-icon"></i>
+                <span class="nav-text">طبقات</span>
+            </button>
+            <button class="nav-btn" data-tab="analysis">
+                <i class="fas fa-draw-polygon nav-icon"></i>
+                <span class="nav-text">تحليل</span>
+            </button>
+            <button class="nav-btn" data-tab="export">
+                <i class="fas fa-share-alt nav-icon"></i>
+                <span class="nav-text">مشاركة</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- نافذة مشاركة الإحداثيات -->
+    <div class="share-modal" id="shareModal">
+        <div class="share-content">
+            <h2 style="margin-bottom: 12px; color: #22d3ee;"><i class="fa-solid fa-share-nodes"></i> مشاركة الإحداثيات</h2>
+            <div class="small" style="margin-bottom: 12px;">اختر طريقة لمشاركة الإحداثيات الحالية:</div>
+            
+            <div class="share-options">
+                <div class="share-option" id="shareWhatsAppOption">
+                    <i class="fa-brands fa-whatsapp" style="color: #25D366; font-size: 22px;"></i>
+                    <div>
+                        <div style="font-weight: bold;">مشاركة عبر واتساب</div>
+                        <div class="small">إرسال الإحداثيات إلى جهات الاتصال</div>
+                    </div>
+                </div>
+                
+                <div class="share-option" id="shareGoogleOption">
+                    <i class="fa-brands fa-google" style="color: #4285F4; font-size: 22px;"></i>
+                    <div>
+                        <div style="font-weight: bold;">فتح في خرائط جوجل</div>
+                        <div class="small">عرض الموقع في تطبيق خرائط جوجل</div>
+                    </div>
+                </div>
+                
+                <div class="share-option" id="copyCoordsOption">
+                    <i class="fa-solid fa-copy" style="color: #f59e0b; font-size: 22px;"></i>
+                    <div>
+                        <div style="font-weight: bold;">نسخ الإحداثيات</div>
+                        <div class="small">نسخ الإحداثيات إلى الحافظة</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px; display: flex; justify-content: flex-end;">
+                <button id="btnCloseShare" class="btn btn-sec">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="note" class="notice"><i class="fa-solid fa-circle-check"></i> <span id="noteText">تم</span></div>
+
+    <script>
+        // ===================== التهيئة الأساسية =====================
+        let map = L.map('map', {
+            center: [23.8859, 45.0792], // مركز السعودية
+            zoom: 6,
+            minZoom: 4,
+            maxZoom: 18,
+            tap: false, // تحسين اللمس للجوال
+            preferCanvas: true // تحسين الأداء
+        });
+
+        // طبقات الخريطة الأساسية
+        const baseLayers = {
+            'الخريطة العادية': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                className: 'optimized-layer'
+            }),
+            'صور الأقمار': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Esri, Maxar, Earthstar Geographics',
+                className: 'optimized-layer'
+            }),
+            'الخرائط الطبوغرافية': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                attribution: 'OpenTopoMap',
+                className: 'optimized-layer'
+            }),
+            'تضاريس التلال': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Esri',
+                className: 'optimized-layer'
+            }),
+            'الخريطة الجيولوجية': L.tileLayer('https://tiles.arcgis.com/tiles/nGt4QxSblgDfeJn9/arcgis/rest/services/geologic_map_of_the_world/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'USGS',
+                className: 'optimized-layer'
+            }),
+            'الخريطة الوطنية': L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'USGS National Map',
+                className: 'optimized-layer'
+            })
+        };
+
+        // إضافة الطبقة الأساسية الافتراضية
+        baseLayers['صور الأقمار'].addTo(map);
+
+        // متغيرات النظام
+        let currentCoordinates = { lat: 0, lng: 0 };
+        let isDrawing = false;
+        let currentDrawHandler = null;
+        let isMobile = window.innerWidth <= 768;
+        let searchHistory = [];
+        let analysisResults = [];
+        let resultsLayer = L.layerGroup().addTo(map);
+        let heatmapLayer = null;
+        let exclusionLayers = L.layerGroup().addTo(map);
+        let drawnItems = new L.FeatureGroup().addTo(map);
+        let lastDrawnPolygon = null;
+
+        // ===================== القائمة المنسدلة المحسنة =====================
+        const enhancedDropdown = document.getElementById('enhancedDropdown');
+        const dropdownBackdrop = document.getElementById('dropdownBackdrop');
+        const dropdownCloseBtn = document.getElementById('dropdownCloseBtn');
+        const menuToggle = document.getElementById('menuToggle');
+        const hamburger = document.getElementById('hamburger');
+
+        // فتح/إغلاق القائمة المنسدلة المحسنة
+        menuToggle.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toggleEnhancedDropdown();
+        });
+
+        dropdownCloseBtn.addEventListener('click', function() {
+            hideEnhancedDropdown();
+        });
+
+        dropdownBackdrop.addEventListener('click', function() {
+            hideEnhancedDropdown();
+        });
+
+        // إغلاق القائمة المنسدلة عند النقر على عنصر
+        document.querySelectorAll('.dropdown-item-large').forEach(item => {
+            item.addEventListener('click', function() {
+                const tab = this.getAttribute('data-tab');
+                if (tab) {
+                    switchTab(tab);
+                    controlsPanel.classList.add('active');
+                }
+                
+                // معالجة العناصر الخاصة
+                if (this.id === 'toggleControlsEnhanced') {
+                    toggleControls();
+                } else if (this.id === 'resetSystemEnhanced') {
+                    resetSystem();
+                } else if (this.id === 'systemHealthEnhanced') {
+                    checkSystemHealth();
+                } else if (this.id === 'advancedAnalysisEnhanced') {
+                    switchTab('analysis');
+                    controlsPanel.classList.add('active');
+                    setTimeout(() => {
+                        document.getElementById('btnAuto').click();
+                    }, 500);
+                }
+                
+                hideEnhancedDropdown();
+            });
+        });
+
+        function toggleEnhancedDropdown() {
+            enhancedDropdown.classList.toggle('active');
+            dropdownBackdrop.classList.toggle('active');
+            document.getElementById('map').classList.toggle('dropdown-active');
+            menuToggle.classList.toggle('active');
+            hamburger.classList.toggle('active');
+            
+            if (enhancedDropdown.classList.contains('active')) {
+                toast('تم فتح القائمة الرئيسية بنجاح');
+            }
+        }
+
+        function hideEnhancedDropdown() {
+            enhancedDropdown.classList.remove('active');
+            dropdownBackdrop.classList.remove('active');
+            document.getElementById('map').classList.remove('dropdown-active');
+            menuToggle.classList.remove('active');
+            hamburger.classList.remove('active');
+        }
+
+        // ===================== بقية الكود (نفس الكود السابق مع تعديلات طفيفة) =====================
+        // ... (الكود السابق يبقى كما هو مع تعديلات طفيفة على أسماء المتغيرات والوظائف)
+        
+        // قاعدة بيانات المدن والمناطق
+        const saudiCities = [
+            { name: "الرياض", lat: 24.7136, lng: 46.6753, type: "عاصمة" },
+            { name: "جدة", lat: 21.4858, lng: 39.1825, type: "مدينة" },
+            { name: "مكة المكرمة", lat: 21.4225, lng: 39.8262, type: "مدينة مقدسة" },
+            // ... (بقية المدن)
+        ];
+
+        // نظام الاستبعاد المحسن
+        const exclusionAreas = {
+            // ... (نفس الكود السابق)
+        };
+
+        // وظيفة للتحقق مما إذا كانت النقطة في منطقة مستبعدة
+        function isExcluded(lat, lng) {
+            // ... (نفس الكود السابق)
+        }
+
+        // قاعدة بيانات المناطق التاريخية للتنقيب مع تحليلات متقدمة
+        const miningAreas = {
+            // ... (نفس الكود السابق)
+        };
+
+        // وظيفة الإشعارات
+        function toast(msg, type = 'ok') {
+            // ... (نفس الكود السابق)
+        }
+
+        // نظام التبويب المحسن
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabPanels = document.querySelectorAll('.tab-panel');
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                // ... (نفس الكود السابق)
+            });
+        });
+
+        // التحكم في واجهة الجوال مع تحسينات
+        const controlsPanel = document.getElementById('controlsPanel');
+        const closeControls = document.getElementById('closeControls');
+        const mobileNavBtns = document.querySelectorAll('.mobile-bottom-nav .nav-btn');
+        const toggleControlsBtn = document.getElementById('toggleControlsBtn');
+        const toggleIcon = document.getElementById('toggleIcon');
+        const miniHeader = document.getElementById('miniHeader');
+        const miniHeaderClose = document.getElementById('miniHeaderClose');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // زر إظهار/إخفاء القائمة
+        toggleControlsBtn.addEventListener('click', toggleControls);
+
+        function toggleControls() {
+            controlsPanel.classList.toggle('active');
+            if (controlsPanel.classList.contains('active')) {
+                toggleIcon.className = 'fas fa-chevron-left';
+                toast('تم إظهار القائمة بنجاح');
+            } else {
+                toggleIcon.className = 'fas fa-chevron-right';
+                toast('تم إخفاء القائمة بنجاح');
+            }
+        }
+
+        // إغلاق لوحة التحكم
+        closeControls.addEventListener('click', function() {
+            controlsPanel.classList.remove('active');
+            toggleIcon.className = 'fas fa-chevron-right';
+            toast('تم إخفاء القائمة بنجاح');
+        });
+
+        // إغلاق الرأس الصغير للجوال
+        miniHeaderClose.addEventListener('click', function() {
+            miniHeader.style.display = 'none';
+            document.querySelector('header').style.marginTop = '0';
+            toast('تم إغلاق الرأس');
+        });
+
+        // التحكم في التبويب عبر شريط التنقل السفلي
+        mobileNavBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const tab = this.getAttribute('data-tab');
+                switchTab(tab);
+                controlsPanel.classList.add('active');
+                
+                // تحديث حالة الأزرار النشطة
+                mobileNavBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // وظيفة تبديل التبويب مع انتقال سلس
+        function switchTab(tabName) {
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabPanels.forEach(panel => panel.classList.remove('active'));
+            
+            document.querySelector(`.tab-button[data-tab="${tabName}"]`).classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+        }
+
+        // ===================== زر إعادة الضبط =====================
+        resetBtn.addEventListener('click', resetSystem);
+
+        function resetSystem() {
+            // إعادة تعيين الخريطة
+            map.setView([23.8859, 45.0792], 6);
+            
+            // مسح النتائج
+            clearResults();
+            
+            // مسح الرسومات
+            clearDrawings();
+            
+            // إعادة تعيين الإعدادات
+            document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+            
+            // إعادة تحميل طبقات الاستبعاد
+            loadExclusionLayers();
+            
+            toast('تم إعادة ضبط النظام بنجاح');
+        }
+
+        // ===================== تحديث إحداثيات المؤشر =====================
+        map.on('mousemove', function(e) {
+            currentCoordinates = e.latlng;
+            document.getElementById('coordsText').textContent = 
+                `${currentCoordinates.lat.toFixed(6)}, ${currentCoordinates.lng.toFixed(6)}`;
+        });
+
+        // ===================== أزرار تبديل الطبقات المحسنة =====================
+        document.getElementById('btnStd').addEventListener('click', () => {
+            loadLayer('الخريطة العادية');
+        });
+
+        document.getElementById('btnSat').addEventListener('click', () => {
+            loadLayer('صور الأقمار');
+        });
+
+        document.getElementById('btnTopo').addEventListener('click', () => {
+            loadLayer('الخرائط الطبوغرافية');
+        });
+
+        document.getElementById('btnHill').addEventListener('click', () => {
+            loadLayer('تضاريس التلال');
+        });
+
+        document.getElementById('btnGeo').addEventListener('click', () => {
+            loadLayer('الخريطة الجيولوجية');
+        });
+
+        document.getElementById('btnNgs').addEventListener('click', () => {
+            loadLayer('الخريطة الوطنية');
+        });
+
+        // ===================== نظام الرسم المحسّن =====================
+        // ... (نفس الكود السابق)
+
+        // ===================== نظام البحث المحسن مع الاستبعاد =====================
+        // ... (نفس الكود السابق)
+
+        // ===================== نظام التحليل المحسن مع معايير جيولوجية متقدمة =====================
+        // ... (نفس الكود السابق)
+
+        // ===================== نظام التصدير =====================
+        // ... (نفس الكود السابق)
+
+        // ===================== نظام المشاركة =====================
+        // ... (نفس الكود السابق)
+
+        // ===================== إدارة النظام =====================
+        // ... (نفس الكود السابق)
+
+        // ===================== تهيئة النظام =====================
+        
+        // فحص النظام عند التحميل
+        setTimeout(() => {
+            checkSystemHealth();
+            updateSearchStats();
+            loadExclusionLayers();
+            
+            toast('تم تحميل النظام بنجاح - تم استبعاد المدن والطرق والمباني والبحار من التحليل');
+        }, 1000);
+
+        // ===================== تحسينات للجوال =====================
+        // منع التكبير المزدوج على الخريطة
+        map.tap?.disable();
+
+        // إعادة ضبط الحجم عند تغيير اتجاه الشاشة
+        window.addEventListener('resize', function() {
+            map.invalidateSize();
+            isMobile = window.innerWidth <= 768;
+        });
+    </script>
+</body>
+</html>
