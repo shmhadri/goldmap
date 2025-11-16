@@ -1,11 +1,16 @@
-from django.urls import path
-from . import views
+# C:\Users\shmha\goldmap\core\urls.py
+
+from django.contrib import admin
+from django.urls import path, include
+from api.views import map_view   # الصفحة الرئيسية
 
 urlpatterns = [
-    path("", views.map_view, name="map"),
-    path("api/predict/", views.predict, name="api_predict"),
-    path("api/analyze_bbox_tiles/", views.analyze_bbox_tiles, name="api_analyze_bbox_tiles"),
-    path("api/analyze_place/", views.analyze_place, name="api_analyze_place"),
-    path("api/export_geojson/", views.export_geojson, name="api_export_geojson"),
-    path("api/save_hotspots/", views.save_hotspots, name="api_save_hotspots"),
+    # لوحة الإدارة
+    path("admin/", admin.site.urls),
+
+    # الصفحة الرئيسية (الخريطة)
+    path("", map_view, name="map"),
+
+    # جميع مسارات API تأتي من api/urls.py
+    path("api/", include("api.urls")),
 ]

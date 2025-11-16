@@ -1,4 +1,3 @@
-# api/views.py
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
@@ -241,16 +240,46 @@ class GeologyAnalyzer:
 
     # -------- الدرع العربي + الجبال --------
 
+    def _arabian_shield_zone(self, lat: float, lon: float) -> str:
+        """
+        تقسيم بسيط لموقع النقطة بالنسبة للدرع العربي:
+        - inside  : داخل الدرع (أعلى ثقة وكثافة).
+        - margin  : حزام محيط قريب من الدرع (ثقة متوسطة).
+        - outside : خارج الدرع العربي (نقاط قليلة ودقيقة جداً).
+        """
+        # صندوق "داخل الدرع" (تقريبي)
+        inside_lon_min, inside_lon_max = 36.0, 44.5
+        inside_lat_min, inside_lat_max = 16.0, 28.5
+
+        # صندوق أوسع ليكون "هامش الدرع"
+        margin_lon_min, margin_lon_max = 35.0, 46.0
+        margin_lat_min, margin_lat_max = 15.0, 30.0
+
+        if (inside_lon_min <= lon <= inside_lon_max) and (
+            inside_lat_min <= lat <= inside_lat_max
+        ):
+            return "inside"
+
+        if (margin_lon_min <= lon <= margin_lon_max) and (
+            margin_lat_min <= lat <= margin_lat_max
+        ):
+            return "margin"
+
+        return "outside"
+
     def _arabian_shield_bias(self, lat: float, lon: float) -> float:
         """
-        تحديد هل النقطة داخل نطاق الدرع العربي في السعودية.
-
-        تقريبًا: بين (36–44.5 شرقًا) و(16–28.5 شمالاً)
-        يشمل: مناطق مثل المدينة، مكة، الطائف، بيشة، ظلم، العيص، حزام الذهب الغربي.
+        إرجاع وزن عددي بحسب موقع النقطة من الدرع العربي:
+        inside -> 1.0
+        margin -> 0.4
+        outside -> 0.0
         """
-        in_longitude = 36.0 <= lon <= 44.5
-        in_latitude = 16.0 <= lat <= 28.5
-        return 1.0 if (in_longitude and in_latitude) else 0.0
+        zone = self._arabian_shield_zone(lat, lon)
+        if zone == "inside":
+            return 1.0
+        if zone == "margin":
+            return 0.4
+        return 0.0
 
     def _mountain_analysis(self, lat: float, lon: float) -> Dict[str, Any]:
         """
@@ -299,7 +328,7 @@ class GeologyAnalyzer:
 
         # الدرع العربي = قاعدة قوية
         if shield_bias > 0.0:
-            score += 0.25
+            score += 0.25 * shield_bias
 
         # نمط شجري + أودية متشعبة
         if s_tree > 0.55 and s_wadis > 0.45:
@@ -351,7 +380,7 @@ class GeologyAnalyzer:
 
         # الدرع العربي
         if shield_bias > 0.0:
-            add_reason("داخل نطاق الدرع العربي - بيئة مواتية للتمعدن", 0.85)
+            add_reason("داخل نطاق الدرع العربي - بيئة مواتية للتمعدن", 0.85 * shield_bias)
 
         # الجبال / الانحدار / التباين / الوعورة / حافة الجبل
         if flags.get("mountain"):
@@ -423,6 +452,8 @@ class GeologyAnalyzer:
         pattern = max(scores.items(), key=lambda kv: kv[1])[0] if scores else None
         flags = self._mountain_analysis(lat, lon)
         shield_bias = self._arabian_shield_bias(lat, lon)
+        shield_zone = self._arabian_shield_zone(lat, lon)
+        flags["shield_zone"] = shield_zone
 
         # ثقة أساسية من الأوزان
         base_confidence = sum(self.weights.get(k, 0.0) * v for k, v in scores.items())
@@ -435,7 +466,7 @@ class GeologyAnalyzer:
 
         # تعزيز الدرع العربي
         if shield_bias > 0.0:
-            confidence = min(1.0, confidence * 1.10 + 0.08)
+            confidence = min(1.0, confidence * (1.05 + 0.05 * shield_bias) + 0.05 * shield_bias)
 
         # تعزيز المناطق الجبلية / الانتقالية
         if flags["mountain"] or flags["slope"] or flags["hillshade"]:
@@ -451,12 +482,13 @@ class GeologyAnalyzer:
         strong_traits += 1 if scores.get("multi", 0) > 0.55 else 0
         strong_traits += 1 if scores.get("fractures", 0) > 0.55 else 0
 
+        # ضبط الثقة بحسب قوة السمات
         if strong_traits >= 3:
             confidence = min(1.0, confidence * 1.15 + 0.08)
         elif strong_traits >= 2:
             confidence = min(1.0, confidence * 1.08 + 0.04)
         else:
-            confidence = max(0.0, confidence * 0.85 - 0.02)
+            confidence = max(0.0, confidence * 0.80 - 0.03)
 
         confidence = max(0.0, min(1.0, confidence))
 
@@ -479,6 +511,47 @@ class GeologyAnalyzer:
 
 # مثيل المحلل
 analyzer = GeologyAnalyzer()
+
+
+def _accept_geology_point(analysis_result: Dict[str, Any]) -> bool:
+    """
+    فلتر نهائي للنقاط حتى تكون:
+    - قليلة لكن دقيقة جداً.
+    - داخل الدرع العربي: عتبات متوسطة.
+    - هامش الدرع: عتبات أعلى قليلاً.
+    - خارج الدرع: عتبات صارمة جداً (نقاط نادرة).
+    """
+    zone = analysis_result.get("flags", {}).get("shield_zone", "outside")
+    conf = float(analysis_result.get("confidence", 0.0))
+    strong = int(analysis_result.get("strong_traits", 0))
+    scores = analysis_result.get("scores", {}) or {}
+    tree = float(scores.get("tree", 0.0))
+    leaf = float(scores.get("leaf", 0.0))
+
+    if zone == "inside":
+        # داخل الدرع: نريد نقاط معقولة لكن ليست كثيرة جداً
+        if conf < 0.50 or strong < 3:
+            return False
+        # نفضل أن يكون أحد النمطين (شجري/ورقي) قوي
+        if max(tree, leaf) < 0.50:
+            return False
+        return True
+
+    if zone == "margin":
+        # هامش الدرع: أصعب قليلاً
+        if conf < 0.60 or strong < 3:
+            return False
+        if max(tree, leaf) < 0.55:
+            return False
+        return True
+
+    # خارج الدرع العربي: نقاط نادرة جداً ودقيقة
+    if conf < 0.80 or strong < 4:
+        return False
+    if tree < 0.65 or leaf < 0.55:
+        return False
+    return True
+
 
 # ===================== كاشف المناطق المأهولة / المزارع / المياه (Overpass) =====================
 
@@ -677,9 +750,9 @@ class UrbanAreaDetector:
         lat,
         lon,
         urban_mask,
-        road_distance=500,
-        city_distance=3000,
-        water_distance=200,
+        road_distance=700,
+        city_distance=5000,
+        water_distance=400,
     ):
         """
         True لو كانت النقطة قرب:
@@ -687,6 +760,7 @@ class UrbanAreaDetector:
         - طريق رئيسي
         - مسطح مائي / بحر / مجرى نهر
         - landuse حضري أو زراعي (مزارع، بساتين...)
+        (لا نضع نقاط تمعدن على هذه المناطق نهائياً)
         """
         # مدن / بلدات
         for c_lat, c_lon in urban_mask.get("cities", []):
@@ -959,6 +1033,7 @@ def predict(request):
     - يتجنب المدن/البحار/المزارع (عن طريق UrbanAreaDetector).
     - يفضّل الدرع العربي والمناطق الجبلية/الانتقالية.
     - يرجّع ثقة الموقع + الأسباب + نسب لكل سبب.
+    - خارج الدرع العربي: نقاط قليلة جداً وبشروط صارمة.
     """
     if request.method != "POST":
         return HttpResponseBadRequest("يجب استخدام طريقة POST فقط")
@@ -1012,7 +1087,7 @@ def predict(request):
         for lat, lon in analysis_points:
             analyzed_points += 1
 
-            # استبعاد مدن / بحار / مزارع
+            # استبعاد مدن / بحار / مزارع / طرق
             if exclude_urban and urban_detector.is_urban_area(lat, lon, urban_mask):
                 continue
 
@@ -1027,11 +1102,8 @@ def predict(request):
             ):
                 continue
 
-            # إسقاط النتائج الضعيفة: نطلب ثقة أعلى + سمات كافية
-            if (
-                analysis_result["confidence"] < 0.4
-                or analysis_result["strong_traits"] < 2
-            ):
+            # فلتر الدقة العالية بحسب داخل/خارج الدرع العربي
+            if not _accept_geology_point(analysis_result):
                 continue
 
             features.append(create_geojson_feature(lon, lat, analysis_result))
@@ -1091,6 +1163,7 @@ def analyze_bbox_tiles(request):
     - يربط نتائج التحليل الرياضي مع تلميحات من صور الأقمار الصناعية.
     - يتجنّب مدن/بحار/مزارع.
     - يعطي ثقة + أسباب + نسب لكل سبب.
+    - خارج الدرع العربي: نقاط قليلة وصارمة جداً.
     """
     if request.method != "POST":
         return HttpResponseBadRequest("يجب استخدام طريقة POST لهذه الواجهة")
@@ -1197,11 +1270,8 @@ def analyze_bbox_tiles(request):
                     lon += step_lon
                     continue
 
-                # حذف الضعيف
-                if (
-                    analysis_result["strong_traits"] < 2
-                    or analysis_result["confidence"] < 0.4
-                ):
+                # فلتر الدقة العالية بحسب داخل/خارج الدرع
+                if not _accept_geology_point(analysis_result):
                     lon += step_lon
                     continue
 

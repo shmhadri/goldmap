@@ -609,10 +609,10 @@
                     <div class="group">
                         <h2><i class="fa-solid fa-magnifying-glass-location"></i> بحث المدن والمناطق</h2>
                         <div class="row">
-                            <input id="q" placeholder="مثال: الرياض، جدة، أبها" maxlength="60">
+                            <input id="q" placeholder="مثال: الرياض، رجال ألمع عسير، مهد الذهب" maxlength="60">
                             <button id="btnSearch" class="btn btn-primary">بحث</button>
                         </div>
-                        <div class="small">ابحث عن المدن والمناطق في السعودية (لا تُستخدم في التحليل، فقط للانتقال).</div>
+                        <div class="small">أكتب اسم المدينة أو القرية، ويمكن إضافة المنطقة لتحسين الدقة: "قنا عسير"، "رجال ألمع عسير".</div>
                         <div class="resbox" id="cityBox">جاهز للبحث…</div>
                     </div>
                     
@@ -658,7 +658,7 @@
                     
                     <div class="group">
                         <h2><i class="fa-solid fa-diagram-project"></i> كشف الأنماط</h2>
-                        <label><input type="checkbox" id="patBranches" checked> النمط الشجري (تشعّب جبال)</label><br>
+                        <label><input type="checkbox" id="patBranches" checked> النمط الشجري (تشعب جبال)</label><br>
                         <label><input type="checkbox" id="patLeaf" checked> النمط الورقي (أحواض/جيوب)</label><br>
                         <label><input type="checkbox" id="patBlue" checked> الأودية الزرقاء</label>
 
@@ -722,7 +722,8 @@
         const ENDPOINTS = {
             analyzeBBox: API_BASE + "/analyze_bbox_tiles/",
             predict: API_BASE + "/predict/",
-            health: API_BASE + "/health/"
+            health: API_BASE + "/health/",
+            analyzePlace: API_BASE + "/analyze_place/"
         };
 
         const PATTERN_LABELS_AR = {
@@ -732,6 +733,17 @@
             multi: "تعدد لوني (أكسدة)",
             fractures: "كسور/صدوع"
         };
+
+        // ===================== دالة مساعدة: تطبيع النص العربي للبحث =====================
+        function normalizeArabic(str) {
+            return (str || "")
+                .trim()
+                .toLowerCase()
+                .replace(/[أإآء]/g, "ا")
+                .replace(/ى/g, "ي")
+                .replace(/ة/g, "ه")
+                .replace(/\s+/g, " ");
+        }
 
         // ===================== التهيئة الأساسية للخريطة =====================
         let map = L.map('map', {
@@ -1076,7 +1088,7 @@
             }
         });
 
-        // ===================== البحث عن المدن (للتنقل فقط) =====================
+        // ===================== البحث عن المدن (قاموس محلي + استدعاء الباكند) =====================
         const knownCities = {
             'الرياض': {lat: 24.7136, lng: 46.6753},
             'جدة': {lat: 21.4858, lng: 39.1825},
@@ -1084,7 +1096,7 @@
             'الدمام': {lat: 26.4207, lng: 50.0888},
             'الطائف': {lat: 21.4373, lng: 40.5127},
             'تبوك': {lat: 28.3835, lng: 36.5662},
-            'ابها': {lat: 18.2465, lng: 42.5117},
+            'أبها': {lat: 18.2465, lng: 42.5117},
             'جازان': {lat: 16.8894, lng: 42.5607},
             'حائل': {lat: 27.5219, lng: 41.6905},
             'الباحة': {lat: 20.0126, lng: 41.4672},
@@ -1093,31 +1105,92 @@
             'وادي بيشة': {lat: 20.0, lng: 42.5}
         };
 
-        document.getElementById('btnSearch').addEventListener('click', searchCity);
+        // قاموس آخر بأسماء "مُطبَّعة" لتسهيل البحث (مثلاً "ابها" = "أبها")
+        const normalizedCityIndex = {};
+        Object.keys(knownCities).forEach(name => {
+            normalizedCityIndex[normalizeArabic(name)] = {
+                name,
+                lat: knownCities[name].lat,
+                lng: knownCities[name].lng
+            };
+        });
+
+        document.getElementById('btnSearch').addEventListener('click', () => searchCity());
         document.getElementById('q').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') searchCity();
         });
 
-        function searchCity() {
+        async function searchCity() {
             const term = document.getElementById('q').value.trim();
+            const cityBox = document.getElementById('cityBox');
+
             if (!term) {
-                toast('يرجى إدخال اسم مدينة', 'err');
+                toast('يرجى إدخال اسم مدينة أو قرية', 'err');
                 return;
             }
-            const cityBox = document.getElementById('cityBox');
+
             cityBox.innerHTML = 'جاري البحث...';
-            if (knownCities[term]) {
-                const city = knownCities[term];
-                map.setView([city.lat, city.lng], 10);
-                L.marker([city.lat, city.lng])
+
+            // 1) محاولة باستخدام القاموس المحلي (مع تطبيع عربي)
+            const norm = normalizeArabic(term);
+            const localMatch = normalizedCityIndex[norm];
+
+            if (localMatch) {
+                const {lat, lng, name} = localMatch;
+                map.setView([lat, lng], 10);
+                L.marker([lat, lng])
                     .addTo(map)
-                    .bindPopup(`<b>${term}</b>`)
+                    .bindPopup(`<b>${name}</b>`)
                     .openPopup();
-                cityBox.innerHTML = `تم العثور على: <b>${term}</b>`;
-                toast(`تم الانتقال إلى ${term}`);
-            } else {
-                cityBox.innerHTML = 'لم يتم العثور على المدينة. جرب اسمًا آخر.';
-                toast('لم يتم العثور على المدينة', 'err');
+                cityBox.innerHTML = `تم العثور على: <b>${name}</b> (من القاموس المحلي)`;
+                toast(`تم الانتقال إلى ${name}`);
+                return;
+            }
+
+            // 2) لو ما وجد محليًا → استدعاء الباكند /api/analyze_place
+            try {
+                const resp = await fetch(
+                    ENDPOINTS.analyzePlace + "?q=" + encodeURIComponent(term),
+                    { method: "GET" }
+                );
+
+                if (!resp.ok) {
+                    throw new Error("HTTP " + resp.status);
+                }
+
+                const data = await resp.json();
+
+                if (!data || data.found === false) {
+                    const hint = (data && data.hint) || "لم يتم العثور على هذا الاسم في قاعدة البيانات.";
+                    cityBox.innerHTML = hint + "<br><span class='small'>جرّب كتابة الاسم مع المنطقة، مثل: \"قنا عسير\"، \"رجال ألمع عسير\".</span>";
+                    toast('لم يتم العثور على الموقع. جرّب إضافة اسم المنطقة.', 'err');
+                    return;
+                }
+
+                const center = data.center || {};
+                const lat = center.lat;
+                const lon = center.lon;
+
+                if (typeof lat !== 'number' || typeof lon !== 'number') {
+                    cityBox.innerHTML = 'تم العثور على نتيجة، لكن الإحداثيات غير صالحة.';
+                    toast('تم العثور على النتيجة لكن الإحداثيات غير صالحة', 'err');
+                    return;
+                }
+
+                map.setView([lat, lon], 11);
+                L.marker([lat, lon])
+                    .addTo(map)
+                    .bindPopup(`<b>${data.name || term}</b>`)
+                    .openPopup();
+
+                cityBox.innerHTML = `تم العثور على: <b>${data.name || term}</b><br>
+                    <span class='small'>نوع المكان: ${data.type || 'غير محدد'} – أهمية: ${(data.importance || 0).toFixed(2)}</span>`;
+                toast(`تم الانتقال إلى ${data.name || term}`);
+
+            } catch (err) {
+                console.error("Search error:", err);
+                cityBox.innerHTML = 'تعذر الاتصال بخدمة البحث في الباكند.<br><span class="small">تحقق من أن /api/analyze_place يعمل وأن الإنترنت متصل.</span>';
+                toast('تعذر الاتصال بخدمة البحث عن الأماكن', 'err');
             }
         }
 
@@ -1241,6 +1314,13 @@
                 setProg(55);
 
                 if (!resp.ok) {
+                    // محاولة قراءة رسالة الباكند إن وجدت
+                    let backendMsg = "";
+                    try {
+                        const text = await resp.text();
+                        backendMsg = text || "";
+                    } catch (_) {}
+                    console.error("Backend HTTP error:", resp.status, backendMsg);
                     throw new Error("HTTP " + resp.status);
                 }
 
@@ -1254,7 +1334,7 @@
                 console.error(err);
                 setProg(0);
                 document.getElementById('results').innerHTML =
-                    "تعذّر الاتصال بمحرك التحليل في الباكند. تأكد من أن API يعمل على Render أو عدّل المسارات في أعلى الملف.";
+                    "تعذّر الاتصال بمحرك التحليل في الباكند أو رجع خطأ. افتح أدوات المطوّر (Network) وتحقق من استجابة /api/analyze_bbox_tiles و /api/predict.";
                 toast('فشل الاتصال بمحرك التحليل في الباكند', 'err');
             }
         }
@@ -1265,6 +1345,17 @@
             if (heatmapLayer) {
                 map.removeLayer(heatmapLayer);
                 heatmapLayer = null;
+            }
+
+            // لو الباكند رجع خطأ بصيغة JSON
+            if (fc && fc.error) {
+                document.getElementById('results').innerHTML =
+                    "الباكند رجع خطأ: " + (fc.details || fc.error);
+                document.getElementById('mBlue').textContent = '0';
+                document.getElementById('mBr').textContent = '0';
+                document.getElementById('mLeaf').textContent = '0';
+                document.getElementById('kShown').textContent = '0';
+                return;
             }
 
             const features = (fc && fc.features) || [];
