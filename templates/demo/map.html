@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -520,7 +519,8 @@
                 bottom: 0;
                 height: calc(100vh - 80px);
                 max-height: none;
-                width: min(420px, 100%);
+                /* هنا التعديل المهم للجوال: لا تغطي الشاشة كاملة */
+                width: min(420px, 88vw); /* تبقى نسبة من عرض الخريطة ظاهرة */
                 transform: translateX(100%);
                 border-radius: 18px 0 0 0;
                 box-shadow: none;
@@ -717,6 +717,22 @@
     <div id="note" class="notice"><i class="fa-solid fa-circle-check"></i> <span id="noteText">تم</span></div>
 
     <script>
+        // ===================== إعداد مسارات API (تأكد من صحتها مع Django) =====================
+        const API_BASE = "/api";
+        const ENDPOINTS = {
+            analyzeBBox: API_BASE + "/analyze_bbox_tiles/",
+            predict: API_BASE + "/predict/",
+            health: API_BASE + "/health/"
+        };
+
+        const PATTERN_LABELS_AR = {
+            tree: "نمط شجري (تشعب أودية)",
+            leaf: "نمط ورقي",
+            wadis: "أودية رئيسية/زرقاء",
+            multi: "تعدد لوني (أكسدة)",
+            fractures: "كسور/صدوع"
+        };
+
         // ===================== التهيئة الأساسية للخريطة =====================
         let map = L.map('map', {
             center: [23.8859, 45.0792], // مركز السعودية
@@ -834,7 +850,6 @@
                 tab.classList.add('active');
                 document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
 
-                // إغلاق القائمة على الجوال بعد الانتقال بين التبويبات
                 if (window.innerWidth <= 1024) {
                     toggleDrawer(false);
                 }
@@ -1119,7 +1134,7 @@
             }
         });
 
-        // ===================== نظام التحليل =====================
+        // ===================== نظام التحليل (متصل بالـ API) =====================
         let analysisResults = [];
         let resultsLayer = L.layerGroup().addTo(map);
         let heatmapLayer = null;
@@ -1139,136 +1154,176 @@
             document.getElementById('prog').style.width = p + '%';
         }
 
-        function distToPolyline(lat,lng,poly){
-            let minD = Infinity;
-            for(let i=0;i<poly.length-1;i++){
-                const a = poly[i], b = poly[i+1];
-                const d = Math.min(
-                    Math.sqrt(Math.pow(lat-a[0],2)+Math.pow(lng-a[1],2)),
-                    Math.sqrt(Math.pow(lat-b[0],2)+Math.pow(lng-b[1],2))
-                );
-                if(d<minD) minD=d;
-            }
-            return minD;
+        function buildPatternsArray() {
+            const patterns = [];
+            if (document.getElementById('patBranches').checked) patterns.push('tree');
+            if (document.getElementById('patLeaf').checked) patterns.push('leaf');
+            if (document.getElementById('patBlue').checked) patterns.push('wadis');
+            // دائمًا نضيف الأكسدة والكسور لأنها مهمة لذهب الحراري
+            patterns.push('multi', 'fractures');
+            return [...new Set(patterns)];
         }
 
-        function insideRect(lat,lng,bounds){
-            return lat>=bounds[0][0] && lat<=bounds[1][0] &&
-                   lng>=bounds[0][1] && lng<=bounds[1][1];
-        }
-
-        function nearestFaultBoost(lat,lng){
-            let best = 0;
-            faultsData.forEach(f=>{
-                const d = distToPolyline(lat,lng,f);
-                if(d < 1.0){ // أقل من ~1 درجة -> تعزيز
-                    const score = (1.0 - d) * 0.2;
-                    if(score > best) best = score;
-                }
-            });
-            return best;
-        }
-
-        function mineralBoost(lat,lng){
-            let boost = 0;
-            mineralAreas.forEach(a=>{
-                if(insideRect(lat,lng,a.bounds)){
-                    boost = Math.max(boost,0.15);
-                }
-            });
-            geophysPatches.forEach(a=>{
-                if(insideRect(lat,lng,a.bounds)){
-                    boost = Math.max(boost,0.1);
-                }
-            });
-            gravityPatches.forEach(a=>{
-                if(insideRect(lat,lng,a.bounds)){
-                    boost = Math.max(boost,0.08);
-                }
-            });
-            return boost;
-        }
-
-        function analyzeArea(mode) {
-            clearResults();
-            let bounds;
-            if (mode === 'viewport') {
-                bounds = map.getBounds();
-            } else {
-                bounds = lastDrawnPolygon.getBounds();
-            }
-
-            const corners = [
-                [bounds.getSouth(), bounds.getWest()],
-                [bounds.getSouth(), bounds.getEast()],
-                [bounds.getNorth(), bounds.getWest()],
-                [bounds.getNorth(), bounds.getEast()]
-            ];
-            const insideCount = corners.filter(c=>inArabianShield(c[0],c[1])).length;
-            if(insideCount === 0){
-                toast("المنطقة الحالية خارج الدرع العربي تقريبًا. اختر منطقة أخرى.", "err");
-                document.getElementById('results').innerHTML = "التحليل يعمل داخل الدرع العربي فقط.";
-                return;
-            }
-
-            document.getElementById('results').innerHTML = 'جاري التحليل داخل الدرع العربي مع استبعاد المدن والبحار...';
-            setProg(0);
-
-            setTimeout(() => {
-                setProg(35);
-                const numResults = Math.floor(Math.random() * 40) + 30;
-                analysisResults = [];
-                let safety = 0;
-
-                while(analysisResults.length < numResults && safety < numResults*50){
-                    safety++;
-                    const lat = bounds.getSouth() + Math.random() * (bounds.getNorth() - bounds.getSouth());
-                    const lng = bounds.getWest() + Math.random() * (bounds.getEast() - bounds.getWest());
-
-                    if(!inArabianShield(lat,lng)) continue;
-                    if(!farFromCities(lat,lng)) continue;
-
-                    const blue = Math.random();
-                    const branch = Math.random();
-                    const leaf = Math.random();
-
-                    let baseScore = blue * 0.34 + branch * 0.46 + leaf * 0.20;
-                    const faultBonus = nearestFaultBoost(lat,lng);
-                    const mineralBonus = mineralBoost(lat,lng);
-
-                    let score = baseScore + faultBonus + mineralBonus;
-                    score = Math.max(0, Math.min(1, score));
-
-                    analysisResults.push({
-                        lat, lng,
-                        score,
-                        blue,
-                        branch,
-                        leaf,
-                        probability: calculateProbability(score)
-                    });
+        async function analyzeArea(mode) {
+            try {
+                clearResults();
+                let bounds;
+                if (mode === 'viewport') {
+                    bounds = map.getBounds();
+                } else {
+                    bounds = lastDrawnPolygon.getBounds();
                 }
 
-                setProg(75);
-                displayResults();
+                const corners = [
+                    [bounds.getSouth(), bounds.getWest()],
+                    [bounds.getSouth(), bounds.getEast()],
+                    [bounds.getNorth(), bounds.getWest()],
+                    [bounds.getNorth(), bounds.getEast()]
+                ];
+                const insideCount = corners.filter(c=>inArabianShield(c[0],c[1])).length;
+                const resultsBox = document.getElementById('results');
+
+                if(insideCount === 0){
+                    toast("المنطقة الحالية خارج الدرع العربي تقريبًا. اختر منطقة أخرى.", "err");
+                    resultsBox.innerHTML = "التحليل يعمل داخل الدرع العربي فقط.";
+                    return;
+                }
+
+                resultsBox.innerHTML = 'جاري إرسال المنطقة لمحرك GoldMap AI وتحليلها...';
+                setProg(10);
+
+                const patterns = buildPatternsArray();
+                let url = "";
+                let body = {};
+
+                if (mode === 'viewport') {
+                    const b = bounds;
+                    url = ENDPOINTS.analyzeBBox;
+                    body = {
+                        north: b.getNorth(),
+                        south: b.getSouth(),
+                        east: b.getEast(),
+                        west: b.getWest(),
+                        zoom: map.getZoom(),
+                        patterns: patterns,
+                        mountainsOnly: true,
+                        excludeUrban: true,
+                        limit: 600
+                    };
+                } else {
+                    url = ENDPOINTS.predict;
+
+                    let latlngs = lastDrawnPolygon.getLatLngs();
+                    // مستطيل/مضلع: Leaflet يعطي مصفوفة داخلية
+                    if (Array.isArray(latlngs[0])) {
+                        latlngs = latlngs[0];
+                    }
+                    const coords = latlngs.map(ll => [ll.lat, ll.lng]);
+
+                    body = {
+                        coordinates: coords,
+                        patterns: patterns,
+                        mountainsOnly: true,
+                        excludeUrban: true,
+                        count: 300
+                    };
+                }
+
+                setProg(30);
+                const resp = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                setProg(55);
+
+                if (!resp.ok) {
+                    throw new Error("HTTP " + resp.status);
+                }
+
+                const data = await resp.json();
+                setProg(80);
+
+                renderFeatureCollection(data);
                 setProg(100);
-                toast(`تم التحليل وتم العثور على ${analysisResults.length} نتيجة داخل الدرع العربي`);
-            }, 1200);
+                toast('تم التحليل باستخدام محرك GoldMap AI (الباكند)');
+            } catch (err) {
+                console.error(err);
+                setProg(0);
+                document.getElementById('results').innerHTML =
+                    "تعذّر الاتصال بمحرك التحليل في الباكند. تأكد من أن API يعمل على Render أو عدّل المسارات في أعلى الملف.";
+                toast('فشل الاتصال بمحرك التحليل في الباكند', 'err');
+            }
         }
 
-        function calculateProbability(score) {
-            if (score >= 0.7) return 'high';
-            if (score >= 0.5) return 'medium';
-            return 'low';
-        }
-
-        function displayResults() {
+        function renderFeatureCollection(fc) {
+            analysisResults = [];
             resultsLayer.clearLayers();
             if (heatmapLayer) {
                 map.removeLayer(heatmapLayer);
                 heatmapLayer = null;
             }
 
+            const features = (fc && fc.features) || [];
+            if (!features.length) {
+                document.getElementById('results').innerHTML = 'لا توجد نقاط تمعدن في هذه المنطقة حسب شروط التحليل الحالية.';
+                document.getElementById('mBlue').textContent = '0';
+                document.getElementById('mBr').textContent = '0';
+                document.getElementById('mLeaf').textContent = '0';
+                document.getElementById('kShown').textContent = '0';
+                return;
+            }
+
+            features.forEach((feat, idx) => {
+                if (!feat.geometry || feat.geometry.type !== 'Point') return;
+                const coords = feat.geometry.coordinates || [];
+                if (coords.length < 2) return;
+
+                const lon = coords[0];
+                const lat = coords[1];
+                const p = feat.properties || {};
+
+                const confidence = typeof p.confidence === 'number'
+                    ? p.confidence
+                    : parseFloat(p.confidence || 0) || 0;
+
+                const scores = p.scores || {};
+                const reasons = Array.isArray(p.reasons) ? p.reasons : [];
+                const pattern = p.pattern || null;
+                const strongTraits = typeof p.strong_traits === 'number'
+                    ? p.strong_traits
+                    : (p.strongTraits || 0);
+
+                const probability = confidence >= 0.7 ? 'high'
+                                  : confidence >= 0.5 ? 'medium'
+                                  : 'low';
+
+                const blueScore = scores.wadis || scores.blue || 0;
+                const branchScore = scores.tree || scores.branch || 0;
+                const leafScore = scores.leaf || 0;
+
+                analysisResults.push({
+                    lat,
+                    lng: lon,
+                    score: confidence,
+                    probability,
+                    scores,
+                    reasons,
+                    pattern,
+                    strongTraits,
+                    blue: blueScore,
+                    branch: branchScore,
+                    leaf: leafScore
+                });
+            });
+
+            displayResultsFromAnalysis();
+        }
+
+        function displayResultsFromAnalysis() {
             const displayStyle = document.querySelector('input[name="style"]:checked').value;
             const useBlue = document.getElementById('patBlue').checked;
             const useBranch = document.getElementById('patBranches').checked;
@@ -1282,11 +1337,53 @@
                 if (result.branch > 0.5 && useBranch) cBr++;
                 if (result.leaf > 0.5 && useLeaf) cLeaf++;
 
+                const conf = result.score;
+                const prob = result.probability;
+
                 if (displayStyle === 'points') {
                     let color;
-                    if (result.probability === 'high') color = '#dc2626';
-                    else if (result.probability === 'medium') color = '#f59e0b';
+                    if (prob === 'high') color = '#dc2626';
+                    else if (prob === 'medium') color = '#f59e0b';
                     else color = '#84cc16';
+
+                    const patternLabel = result.pattern && PATTERN_LABELS_AR[result.pattern]
+                        ? PATTERN_LABELS_AR[result.pattern]
+                        : (result.pattern || 'غير محدد');
+
+                    let reasonsHtml = '';
+                    if (result.reasons && result.reasons.length) {
+                        reasonsHtml = '<ul style="padding-right:18px;margin:6px 0 0 0;font-size:12px;line-height:1.6;">' +
+                            result.reasons.map(r => `<li>${r}</li>`).join('') +
+                            '</ul>';
+                    }
+
+                    let scoresHtml = '';
+                    const s = result.scores || {};
+                    const scoreEntries = Object.keys(s);
+                    if (scoreEntries.length) {
+                        scoresHtml = '<div style="margin-top:6px;font-size:12px;">';
+                        scoreEntries.forEach(k => {
+                            const lbl = PATTERN_LABELS_AR[k] || k;
+                            scoresHtml += `<div>• ${lbl}: ${(s[k]*100).toFixed(0)}%</div>`;
+                        });
+                        scoresHtml += '</div>';
+                    }
+
+                    const popupHtml = `
+                        <div style="min-width:230px">
+                            <div style="font-weight:800;margin-bottom:4px;">نقطة تمعدن محتملة</div>
+                            <div style="font-size:13px;">
+                                <div>ثقة التحليل: <b>${(conf*100).toFixed(1)}%</b></div>
+                                <div>درجة الاحتمال: ${
+                                    prob === 'high' ? 'عالية' : prob === 'medium' ? 'متوسطة' : 'منخفضة'
+                                }</div>
+                                <div>النمط الغالب: <b>${patternLabel}</b></div>
+                                <div>عدد السمات القوية: <b>${result.strongTraits}</b></div>
+                                ${scoresHtml}
+                                ${reasonsHtml ? '<hr style="border:none;border-top:1px solid #1e293b;margin:6px 0;">' + reasonsHtml : ''}
+                            </div>
+                        </div>
+                    `;
 
                     L.circleMarker([result.lat, result.lng], {
                         radius: 6,
@@ -1294,12 +1391,13 @@
                         color: '#ffffff',
                         weight: 1,
                         opacity: 1,
-                        fillOpacity: 0.85
+                        fillOpacity: 0.88
                     })
-                    .bindTooltip(`نقاط: ${(result.score * 100).toFixed(1)}%`)
+                    .bindTooltip(`ثقة التحليل: ${(conf * 100).toFixed(1)}%`, {direction:'top'})
+                    .bindPopup(popupHtml)
                     .addTo(resultsLayer);
                 } else {
-                    heatPoints.push([result.lat, result.lng, result.score]);
+                    heatPoints.push([result.lat, result.lng, conf]);
                 }
             });
 
@@ -1336,7 +1434,7 @@
             `;
         }
 
-        // ===================== التصدير KML / GeoJSON =====================
+        // ===================== التصدير KML / GeoJSON (من نتائج الباكند) =====================
         document.getElementById('btnExportKML').addEventListener('click', exportKML);
         document.getElementById('btnExportGeoJSON').addEventListener('click', exportGeoJSON);
 
@@ -1349,7 +1447,7 @@
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
 <name>نتائج GoldMap AI</name>
-<description>نتائج تحليل الذهب والمعادن (محاكاة داخل الدرع العربي)</description>`;
+<description>نتائج تحليل الذهب والمعادن داخل الدرع العربي</description>`;
             analysisResults.forEach((result, index) => {
                 const color = getKMLColor(result.probability);
                 kmlContent += `
@@ -1357,7 +1455,7 @@
 <name>نتيجة ${index + 1}</name>
 <description>
 الاحتمالية: ${result.probability === 'high' ? 'عالية' : result.probability === 'medium' ? 'متوسطة' : 'منخفضة'}
-النقاط: ${(result.score * 100).toFixed(1)}%
+الثقة: ${(result.score * 100).toFixed(1)}%
 </description>
 <Style>
 <IconStyle>
@@ -1390,10 +1488,11 @@
                 properties: {
                     id: index + 1,
                     probability: result.probability,
-                    score: result.score,
-                    blue: result.blue,
-                    branch: result.branch,
-                    leaf: result.leaf
+                    confidence: result.score,
+                    scores: result.scores,
+                    reasons: result.reasons,
+                    pattern: result.pattern,
+                    strong_traits: result.strongTraits
                 },
                 geometry: {
                     type: 'Point',
@@ -1454,18 +1553,32 @@
             toast('تم مسح جميع الرسومات');
         }
 
-        function checkSystemHealth() {
+        async function checkSystemHealth() {
             const healthMsg = document.getElementById('healthMsg');
+            try {
+                const resp = await fetch(ENDPOINTS.health, {method: 'GET'});
+                if (!resp.ok) throw new Error("HTTP " + resp.status);
+                const data = await resp.json();
+                if (data.status === 'healthy') {
+                    healthMsg.textContent = '✅ الباكند (GoldMap API) يعمل بشكل ممتاز';
+                    healthMsg.style.color = '#10b981';
+                    toast('فحص النظام: الباكند والخريطة يعملان بشكل صحيح');
+                    return;
+                }
+            } catch (e) {
+                // تجاهل ونستخدم فحص الواجهة فقط
+            }
+
             const isMapLoaded = map && map._loaded;
             const hasLayers = Object.keys(baseLayers).length > 0;
             if (isMapLoaded && hasLayers) {
-                healthMsg.textContent = '✅ النظام يعمل بكفاءة (التحليل داخل الدرع العربي فقط)';
-                healthMsg.style.color = '#10b981';
-                toast('فحص النظام: كل شيء يعمل بشكل صحيح');
+                healthMsg.textContent = '⚠️ الخريطة تعمل، لكن لم يتم تأكيد اتصال الباكند (تحقق من /api/health/)';
+                healthMsg.style.color = '#facc15';
+                toast('فحص النظام: الخريطة تعمل، تحقق من إعدادات API', 'err');
             } else {
                 healthMsg.textContent = '❌ هناك مشكلة في تحميل النظام';
                 healthMsg.style.color = '#ef4444';
-                toast('فحص النظام: اكتشاف مشاكل', 'err');
+                toast('فحص النظام: اكتشاف مشاكل في تحميل الخريطة', 'err');
             }
         }
 
@@ -1493,7 +1606,6 @@
         }
 
         menuBtn.addEventListener('click', () => {
-            // لا نغير شيء على الديسكتوب شكليًا، التأثير للجوال فقط من خلال الـ CSS
             toggleDrawer();
         });
 
@@ -1510,7 +1622,6 @@
             }
         });
 
-        // إغلاق القائمة عند تكبير الشاشة مرة أخرى (خروج من وضع الجوال)
         window.addEventListener('resize', () => {
             if (window.innerWidth > 1024) {
                 controlsPanel.classList.remove('open');
